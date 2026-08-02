@@ -73,7 +73,7 @@ async def health():
         "rag_index": "loaded" if index_ok else "not_loaded",
         "rag_chunk_count": chunk_count,
         "mcp": mcp_status,
-        "model": "claude-haiku-4-5-20251001",
+        "model": "groq/llama-3.3-70b-versatile",
     }
 
 
