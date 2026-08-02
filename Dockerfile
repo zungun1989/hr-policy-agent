@@ -20,5 +20,6 @@ ENV PYTHONPATH=/app
 ENV CHROMA_DB_PATH=/app/rag/chroma_store
 ENV CORPUS_PATH=/app/corpus
 ENV MOCK_DATA_PATH=/app/mock_data
+ENV FASTEMBED_CACHE_PATH=/app/rag/.fastembed_cache
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]

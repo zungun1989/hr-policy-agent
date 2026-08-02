@@ -5,6 +5,10 @@ import os
 from typing import Optional
 
 CHROMA_DB_PATH = os.environ.get("CHROMA_DB_PATH", "./rag/chroma_store")
+FASTEMBED_CACHE = os.environ.get(
+    "FASTEMBED_CACHE_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".fastembed_cache"),
+)
 
 _client = None
 _collection = None
@@ -22,7 +26,7 @@ def _get_collection():
 
     try:
         from fastembed import TextEmbedding
-        _embed_model = TextEmbedding("BAAI/bge-small-en-v1.5")
+        _embed_model = TextEmbedding("BAAI/bge-small-en-v1.5", cache_dir=FASTEMBED_CACHE)
 
         class FastEmbedFn(EmbeddingFunction):
             def __call__(self, input: list[str]):
