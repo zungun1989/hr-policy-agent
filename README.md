@@ -11,7 +11,7 @@ pinned: false
 
 An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Claude** as the reasoning backbone.
 
-**Quantic MSAIE Capstone Project** — Zeliha Bezgin & Fahrettin Bezgin
+**Quantic MSAIE Capstone Project** — Zeliha Ungun & Fahrettin Ungun
 
 ---
 

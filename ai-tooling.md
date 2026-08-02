@@ -58,7 +58,7 @@ Commits are split between Zeliha and Fahrettin to reflect equal contributions:
 - **Zeliha**: Corpus documents, MCP server, web app + UI, documentation
 - **Fahrettin**: RAG pipeline, agent orchestrator, CI/CD + deployment, evaluation
 
-Fahrettin's commits use `git commit --author="Fahrettin Bezgin <fahrettin@email.com>"`.
+Fahrettin's commits use `git commit --author="Fahrettin Ungun <frank.ungun@gmail.com>"`.
 
 ---
 
