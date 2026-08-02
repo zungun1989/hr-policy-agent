@@ -1,0 +1,27 @@
+# Core
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-dotenv==1.0.1
+httpx==0.28.1
+
+# LLM
+anthropic==0.40.0
+
+# RAG / Vector store
+chromadb==0.5.23
+fastembed==0.4.1
+
+# PDF parsing & generation
+pypdf==5.1.0
+fpdf2==2.8.1
+
+# MCP
+mcp==1.2.0
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+anyio==4.7.0
+
+# Evaluation helpers
+numpy==2.2.0

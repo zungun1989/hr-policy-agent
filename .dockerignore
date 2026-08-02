@@ -1,0 +1,12 @@
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+.env
+.venv
+venv
+node_modules
+*.egg-info
+.pytest_cache
+rag/chroma_store

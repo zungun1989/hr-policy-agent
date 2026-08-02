@@ -1,0 +1,105 @@
+{
+  "pto_balances": [
+    {
+      "employee_id": "EMP001",
+      "annual_entitlement_hours": 160,
+      "accrued_ytd_hours": 110.5,
+      "used_ytd_hours": 64.0,
+      "available_hours": 46.5,
+      "available_days": 5.8,
+      "carryover_from_last_year_hours": 40.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP002",
+      "annual_entitlement_hours": 120,
+      "accrued_ytd_hours": 75.2,
+      "used_ytd_hours": 80.0,
+      "available_hours": -4.8,
+      "available_days": -0.6,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP003",
+      "annual_entitlement_hours": 160,
+      "accrued_ytd_hours": 105.0,
+      "used_ytd_hours": 40.0,
+      "available_hours": 65.0,
+      "available_days": 8.1,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP004",
+      "annual_entitlement_hours": 120,
+      "accrued_ytd_hours": 90.3,
+      "used_ytd_hours": 24.0,
+      "available_hours": 66.3,
+      "available_days": 8.3,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP005",
+      "annual_entitlement_hours": 200,
+      "accrued_ytd_hours": 138.0,
+      "used_ytd_hours": 88.0,
+      "available_hours": 50.0,
+      "available_days": 6.25,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP006",
+      "annual_entitlement_hours": 160,
+      "accrued_ytd_hours": 115.4,
+      "used_ytd_hours": 16.0,
+      "available_hours": 99.4,
+      "available_days": 12.4,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP007",
+      "annual_entitlement_hours": 200,
+      "accrued_ytd_hours": 150.0,
+      "used_ytd_hours": 56.0,
+      "available_hours": 94.0,
+      "available_days": 11.75,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP008",
+      "annual_entitlement_hours": 200,
+      "accrued_ytd_hours": 145.0,
+      "used_ytd_hours": 80.0,
+      "available_hours": 65.0,
+      "available_days": 8.1,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP009",
+      "annual_entitlement_hours": 240,
+      "accrued_ytd_hours": 165.0,
+      "used_ytd_hours": 48.0,
+      "available_hours": 117.0,
+      "available_days": 14.6,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01"
+    },
+    {
+      "employee_id": "EMP010",
+      "annual_entitlement_hours": 120,
+      "accrued_ytd_hours": 18.5,
+      "used_ytd_hours": 0.0,
+      "available_hours": 18.5,
+      "available_days": 2.3,
+      "carryover_from_last_year_hours": 0.0,
+      "as_of_date": "2025-08-01",
+      "note": "Hired June 2024; in 90-day introductory period, PTO use requires HR approval for medical necessity"
+    }
+  ]
+}

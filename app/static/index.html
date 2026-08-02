@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Acme Corp HR Policy Assistant</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #f0f2f5; color: #1a1a2e; min-height: 100vh; }
+
+  header {
+    background: #1a1a2e; color: #fff; padding: 14px 20px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header .logo { font-size: 1.5rem; }
+  header h1 { font-size: 1.1rem; font-weight: 600; }
+  header .sub { font-size: 0.78rem; opacity: 0.7; }
+
+  .layout { display: flex; height: calc(100vh - 56px); }
+
+  /* Sidebar */
+  .sidebar {
+    width: 280px; background: #fff; border-right: 1px solid #e0e0e0;
+    padding: 16px; overflow-y: auto; flex-shrink: 0;
+  }
+  .sidebar h2 { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em;
+                color: #666; margin-bottom: 10px; }
+  .sidebar input {
+    width: 100%; border: 1px solid #ddd; border-radius: 6px;
+    padding: 6px 10px; font-size: 0.85rem; margin-bottom: 10px;
+  }
+  .demo-btn {
+    display: block; width: 100%; margin-bottom: 8px;
+    padding: 10px 12px; border: 1px solid #3a86ff; background: #f0f6ff;
+    border-radius: 8px; cursor: pointer; text-align: left;
+    font-size: 0.82rem; color: #1a5ccc; transition: background 0.15s;
+  }
+  .demo-btn:hover { background: #ddeeff; }
+  .demo-btn strong { display: block; font-size: 0.88rem; margin-bottom: 2px; }
+
+  .sep { border: none; border-top: 1px solid #eee; margin: 14px 0; }
+
+  .health-badge {
+    padding: 8px 10px; border-radius: 6px; font-size: 0.78rem;
+    background: #e9fbe9; color: #1a7f37; border: 1px solid #b5e8b5;
+  }
+  .health-badge.err { background: #fde8e8; color: #b91c1c; border-color: #f5b5b5; }
+
+  /* Chat area */
+  .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  #messages {
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .msg { max-width: 78%; }
+  .msg.user { align-self: flex-end; }
+  .msg.assistant { align-self: flex-start; }
+
+  .bubble {
+    padding: 12px 16px; border-radius: 14px;
+    line-height: 1.55; font-size: 0.9rem;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .bubble { background: #3a86ff; color: #fff; border-radius: 14px 14px 2px 14px; }
+  .msg.assistant .bubble {
+    background: #fff; border: 1px solid #e0e0e0;
+    border-radius: 14px 14px 14px 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  /* Citations */
+  .citations { margin-top: 8px; }
+  .citations summary {
+    font-size: 0.76rem; color: #3a86ff; cursor: pointer;
+    user-select: none; padding: 2px 0;
+  }
+  .cite-item {
+    background: #f8f9ff; border-left: 3px solid #3a86ff;
+    padding: 6px 10px; margin-top: 4px; font-size: 0.76rem;
+    border-radius: 0 4px 4px 0;
+  }
+  .cite-item strong { display: block; color: #1a1a2e; }
+  .cite-item span { color: #555; }
+
+  /* Tool trace */
+  .trace-wrap { margin-top: 8px; }
+  .trace-wrap summary {
+    font-size: 0.76rem; color: #888; cursor: pointer;
+    user-select: none;
+  }
+  .trace-step {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 5px 0; border-bottom: 1px solid #f0f0f0;
+    font-size: 0.75rem;
+  }
+  .trace-step:last-child { border-bottom: none; }
+  .trace-icon { font-size: 1rem; line-height: 1; flex-shrink: 0; }
+  .trace-info strong { display: block; color: #333; }
+  .trace-info .args { color: #888; font-size: 0.72rem; }
+  .trace-info .res { color: #3a7d3a; font-size: 0.72rem; }
+  .trace-info .err { color: #b91c1c; font-size: 0.72rem; }
+
+  /* Confirm button */
+  .confirm-btn {
+    margin-top: 8px; padding: 8px 16px;
+    background: #f59e0b; color: #fff; border: none;
+    border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .confirm-btn:hover { background: #d97706; }
+
+  /* Latency */
+  .latency { font-size: 0.7rem; color: #aaa; margin-top: 4px; text-align: right; }
+
+  /* Input */
+  .input-row {
+    padding: 12px 16px; background: #fff;
+    border-top: 1px solid #e0e0e0;
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  #empId {
+    width: 90px; border: 1px solid #ddd; border-radius: 8px;
+    padding: 10px; font-size: 0.85rem; flex-shrink: 0;
+  }
+  #msgInput {
+    flex: 1; border: 1px solid #ddd; border-radius: 8px;
+    padding: 10px 14px; font-size: 0.9rem; resize: none;
+    font-family: inherit; max-height: 140px;
+  }
+  #msgInput:focus, #empId:focus { outline: none; border-color: #3a86ff; }
+  #sendBtn {
+    padding: 10px 18px; background: #3a86ff; color: #fff;
+    border: none; border-radius: 8px; cursor: pointer;
+    font-weight: 600; font-size: 0.9rem; white-space: nowrap;
+  }
+  #sendBtn:disabled { background: #aac4f0; cursor: not-allowed; }
+
+  .typing { color: #999; font-style: italic; font-size: 0.85rem; align-self: flex-start; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🏢</span>
+  <div>
+    <h1>Acme Corp HR Policy Assistant</h1>
+    <div class="sub">Powered by Claude + RAG + MCP</div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h2>Employee ID</h2>
+    <input id="sideEmpId" placeholder="e.g. EMP001" oninput="syncEmpId()" />
+
+    <h2>Demo Tasks</h2>
+    <button class="demo-btn" onclick="runDemo(1)">
+      <strong>Task 1 — PTO Request</strong>
+      Carol (EMP003) asks about 3 days PTO next week
+    </button>
+    <button class="demo-btn" onclick="runDemo(2)">
+      <strong>Task 2 — Remote Work Eligibility</strong>
+      Alice (EMP001) asks about 6 weeks in New York
+    </button>
+
+    <hr class="sep" />
+
+    <h2>Sample Questions</h2>
+    <button class="demo-btn" onclick="sendSample('How many PTO days do I accrue per year?')">PTO accrual rates</button>
+    <button class="demo-btn" onclick="sendSample('What is the laptop expense reimbursement policy?')">Laptop reimbursement</button>
+    <button class="demo-btn" onclick="sendSample('Can I work from Spain for 2 weeks?')">International remote work</button>
+    <button class="demo-btn" onclick="sendSample('What are my dental insurance benefits?')">Dental benefits (EMP003)</button>
+
+    <hr class="sep" />
+    <div id="healthBadge" class="health-badge">Checking system status...</div>
+  </aside>
+
+  <!-- Chat -->
+  <div class="chat-area">
+    <div id="messages">
+      <div class="msg assistant">
+        <div class="bubble">👋 Hello! I'm Acme Corp's HR Policy Assistant. I can help you with:
+• PTO balances and requests
+• Remote work eligibility and approvals
+• Benefits and insurance questions
+• Expense reimbursement policies
+• Onboarding, leave, and conduct policies
+
+Please enter your Employee ID on the left (optional but recommended for personalized answers), then ask me anything!</div>
+      </div>
+    </div>
+
+    <div class="input-row">
+      <input id="empId" placeholder="EMP ID" title="Optional: your employee ID" />
+      <textarea id="msgInput" placeholder="Ask an HR policy question..." rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const messagesEl = document.getElementById('messages');
+const msgInput   = document.getElementById('msgInput');
+const empIdEl    = document.getElementById('empId');
+const sendBtn    = document.getElementById('sendBtn');
+const sideEmpId  = document.getElementById('sideEmpId');
+
+// Sync sidebar and input employee ID
+function syncEmpId() { empIdEl.value = sideEmpId.value; }
+
+function appendMsg(role, content) {
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+  div.appendChild(bubble);
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function appendAssistantResult(data) {
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = data.answer;
+  div.appendChild(bubble);
+
+  // Confirmation button if any tool result requires it
+  const needsConfirm = data.tool_trace && data.tool_trace.some(t =>
+    t.result_summary && t.result_summary.includes('confirmation'));
+  if (needsConfirm) {
+    const btn = document.createElement('button');
+    btn.className = 'confirm-btn';
+    btn.textContent = '✅ Confirm & Proceed';
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = 'Confirmed';
+      sendMessageWith(msgInput._lastMessage + ' Yes, I confirm. Please proceed.');
+    };
+    div.appendChild(btn);
+  }
+
+  // Citations
+  if (data.citations && data.citations.length > 0) {
+    const det = document.createElement('details');
+    det.className = 'citations';
+    const sum = document.createElement('summary');
+    sum.textContent = `📋 ${data.citations.length} policy citation${data.citations.length > 1 ? 's' : ''}`;
+    det.appendChild(sum);
+    data.citations.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'cite-item';
+      item.innerHTML = `<strong>${c.title || c.doc_id}</strong><span>${c.section}: ${c.source_snippet}</span>`;
+      det.appendChild(item);
+    });
+    div.appendChild(det);
+  }
+
+  // Tool trace
+  if (data.tool_trace && data.tool_trace.length > 0) {
+    const det = document.createElement('details');
+    det.className = 'trace-wrap';
+    const sum = document.createElement('summary');
+    sum.textContent = `🔧 Agent trace (${data.tool_trace.length} tool calls)`;
+    det.appendChild(sum);
+    data.tool_trace.forEach((t, i) => {
+      const step = document.createElement('div');
+      step.className = 'trace-step';
+      const icon = t.is_error ? '❌' : '✅';
+      const args = JSON.stringify(t.arguments || {}).slice(0, 120);
+      step.innerHTML = `
+        <span class="trace-icon">${icon}</span>
+        <div class="trace-info">
+          <strong>${i + 1}. ${t.tool}</strong>
+          <div class="args">args: ${args}</div>
+          <div class="${t.is_error ? 'err' : 'res'}">${t.result_summary}</div>
+        </div>`;
+      det.appendChild(step);
+    });
+    div.appendChild(det);
+  }
+
+  // Latency
+  if (data.latency_ms) {
+    const lat = document.createElement('div');
+    lat.className = 'latency';
+    lat.textContent = `${(data.latency_ms / 1000).toFixed(1)}s`;
+    div.appendChild(lat);
+  }
+
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+async function sendMessage() {
+  const text = msgInput.value.trim();
+  if (!text) return;
+  sendMessageWith(text);
+}
+
+async function sendMessageWith(text) {
+  const empId = empIdEl.value.trim();
+  msgInput._lastMessage = text;
+  appendMsg('user', text);
+  msgInput.value = '';
+  autoResize(msgInput);
+  sendBtn.disabled = true;
+
+  const typing = document.createElement('div');
+  typing.className = 'typing';
+  typing.textContent = '⏳ HR Agent is thinking...';
+  messagesEl.appendChild(typing);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, employee_id: empId || null }),
+    });
+    typing.remove();
+    if (!res.ok) {
+      const err = await res.json();
+      appendMsg('assistant', `Error: ${err.detail || res.statusText}`);
+    } else {
+      const data = await res.json();
+      appendAssistantResult(data);
+    }
+  } catch (e) {
+    typing.remove();
+    appendMsg('assistant', `Network error: ${e.message}`);
+  } finally {
+    sendBtn.disabled = false;
+    msgInput.focus();
+  }
+}
+
+async function runDemo(task) {
+  const endpoint = `/demo/task${task}`;
+  const label = task === 1
+    ? '[Demo Task 1] PTO Request — EMP003 (Carol)'
+    : '[Demo Task 2] Remote Work Eligibility — EMP001 (Alice, 6 weeks in NY)';
+
+  appendMsg('user', label);
+  sendBtn.disabled = true;
+
+  const typing = document.createElement('div');
+  typing.className = 'typing';
+  typing.textContent = '⏳ Running demo scenario...';
+  messagesEl.appendChild(typing);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  try {
+    const res = await fetch(endpoint, { method: 'POST' });
+    typing.remove();
+    const data = await res.json();
+    appendAssistantResult(data);
+  } catch (e) {
+    typing.remove();
+    appendMsg('assistant', `Demo error: ${e.message}`);
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
+
+function sendSample(text) {
+  msgInput.value = text;
+  autoResize(msgInput);
+  sendMessage();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+// Health check
+async function checkHealth() {
+  const badge = document.getElementById('healthBadge');
+  try {
+    const res = await fetch('/health');
+    const data = await res.json();
+    const ok = data.status === 'ok' && data.rag_index === 'loaded';
+    badge.className = 'health-badge' + (ok ? '' : ' err');
+    badge.textContent = ok
+      ? `✅ System OK — ${data.rag_chunk_count} chunks indexed`
+      : `⚠️ RAG index: ${data.rag_index}`;
+  } catch {
+    badge.className = 'health-badge err';
+    badge.textContent = '❌ Cannot reach server';
+  }
+}
+
+checkHealth();
+</script>
+</body>
+</html>

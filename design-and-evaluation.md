@@ -1,0 +1,217 @@
+# Design and Evaluation
+
+## Architecture Overview
+
+```
+Browser  ──HTTP──►  FastAPI App  ──────────────────────────────────────────────────
+                    (app/main.py)                                                  │
+                         │                                                         │
+                         ▼                                                         │
+                  Agent Orchestrator                                                │
+                  (agent/orchestrator.py)                                          │
+                         │                                                         │
+                    Claude claude-haiku-4-5 (Anthropic API)                          │
+                         │                                                         │
+                    MCP Client (mcp Python SDK)                                    │
+                         │ stdio                                                   │
+                         ▼                                                         │
+                  MCP Server (mcp/server.py)                                       │
+                    ├─ RAG Tools ──────────────────► ChromaDB                      │
+                    │   search_policy_documents       (rag/chroma_store/)          │
+                    │   get_policy_section            fastembed BAAI/bge-small     │
+                    │   check_policy_compliance                                    │
+                    │                                                              │
+                    └─ HR Data Tools ──────────────► Mock JSON Data               │
+                        lookup_employee_profile       (mock_data/)                │
+                        check_pto_balance                                         │
+                        lookup_benefits_status                                    │
+                        create_mock_hr_ticket                                     │
+                        draft_hr_email                                            │
+                                                                                  │
+                    ──────────────────────────────────────────────────────────────
+```
+
+---
+
+## RAG Design
+
+### Corpus
+- 10 Markdown policy documents + 1 PDF (holiday calendar) = ~50–70 pages total
+- Topics: PTO, remote work, expenses, benefits, onboarding, data security, conduct, leave, equipment, travel, holidays
+- All documents are synthetic and authored specifically for this project
+
+### Chunking Strategy
+- **Markdown**: Heading-aware chunking (split on H1/H2 headings), then token-window within sections (400 tokens max, 64-token overlap)
+- **PDF**: Token window with overlap (400 tokens, 64-token overlap)
+- **Seed**: `PYTHONHASHSEED=42` set for deterministic ordering
+- Result: ~120 chunks across all documents
+
+### Embedding Model
+- `fastembed` with `BAAI/bge-small-en-v1.5` (~33MB, CPU-only, no GPU needed)
+- Chosen over sentence-transformers to avoid large PyTorch dependency on free-tier deploy
+- Cosine similarity space in ChromaDB
+
+### Retrieval
+- Default `top_k=5`, configurable per tool call
+- `doc_filter` parameter in retriever allows single-document search (used in `get_policy_section`)
+- No reranker in v1 (ablation study compares k=3 vs k=5)
+
+### RAG Guardrails
+1. Out-of-corpus detection: system prompt instructs Claude to use "outside scope" decline language
+2. Policy fact vs recommendation: system prompt distinguishes ("According to policy..." vs "I recommend...")
+3. Insufficient evidence: system prompt instructs escalation to HR when policy evidence is thin
+
+---
+
+## MCP Server Design
+
+### Transport Choice: stdio
+- **Why**: Single-service deployment (HF Spaces Docker). No separate port needed.
+- The agent orchestrator starts the MCP server as a subprocess and communicates via stdin/stdout
+- For a multi-service deployment, Streamable HTTP would be more appropriate
+
+### Tool Discovery
+- Agent calls `session.list_tools()` on each conversation
+- Returns all 8 tool definitions with JSON Schema input schemas
+- Claude receives these as `tools` parameter in the API call
+
+### Tool Schemas
+All tools use JSON Schema v7. Key design decisions:
+- `requester_confirmed: bool` on action tools prevents accidental execution
+- `doc_id` in `get_policy_section` enables targeted retrieval
+- `enum` values on `ticket_type` and `to_role` constrain valid inputs
+
+### How the Agent Calls Tools
+1. Claude receives tool definitions from MCP server discovery
+2. Claude returns `tool_use` content blocks when it decides to call a tool
+3. Orchestrator extracts each `tool_use` block and calls `session.call_tool(name, arguments)` via MCP SDK
+4. Tool result is returned to Claude as `tool_result` content
+5. Claude synthesizes final response — **no hard-coded function calls**
+
+---
+
+## Agent Orchestration
+
+### Flow
+```
+User message
+  → Prepend employee context (if employee_id provided)
+  → Claude + 8 MCP tools
+  → Agentic loop (max 8 rounds):
+      IF tool_use blocks in response:
+        execute each via MCP client
+        append tool_result to conversation
+        continue loop
+      ELSE:
+        extract final text response → break
+  → Build citations from tool results
+  → Return {answer, citations, tool_trace}
+```
+
+### Two Demo Agentic Tasks
+
+**Task 1: PTO Request Guidance (EMP003 — Carol)**
+> "I'd like to take 3 days of PTO next week. Can you check my balance?"
+
+Expected MCP call sequence:
+1. `lookup_employee_profile(employee_id="EMP003")` → Carol Lee, Product Manager, hybrid-eligible
+2. `check_pto_balance(employee_id="EMP003")` → 8.1 days available
+3. `search_policy_documents(query="PTO request approval process advance notice")` → POL-001 sections
+4. `get_policy_section(doc_id="pto_policy", section_query="manager approval")` → approval rules
+5. `create_mock_hr_ticket(...)` with `requester_confirmed=False` → preview shown to user
+
+**Task 2: Remote Work Eligibility (EMP001 — Alice, 6 weeks NY)**
+> "Can I work from New York for 6 weeks?"
+
+Expected MCP call sequence:
+1. `lookup_employee_profile(employee_id="EMP001")` → Alice Johnson, fully_remote_eligible, CA
+2. `search_policy_documents(query="remote work out of state approval requirements")` → POL-002
+3. `search_policy_documents(query="data security VPN remote work requirements")` → POL-006
+4. `check_policy_compliance(situation="employee working remotely from NY for 6 weeks")` → compliance check
+5. `draft_hr_email(...)` with `requester_confirmed=False` → draft shown for confirmation
+
+### Failure Handling
+- MCP server unavailable: catches exception, returns "HR tools temporarily unavailable" message
+- Employee ID not found: tool returns `found: false` with error message → Claude relays to user
+- Insufficient policy evidence: Claude guided by system prompt to escalate to HR
+
+---
+
+## Safety Guardrails
+
+| Guardrail | Implementation |
+|---|---|
+| Irreversible action gate | `requester_confirmed` parameter; `False` by default → shows preview only |
+| Out-of-scope decline | System prompt: explicit instruction to decline non-HR questions |
+| Policy fact vs recommendation | System prompt: distinguish language required |
+| No hidden chain-of-thought | `tool_trace` in response is operational (tool names + args + result summary only) |
+| Action safety | `draft_hr_email` always sets `is_mock: true` and `sent: false` |
+
+---
+
+## Deployment Architecture
+
+| Component | Technology | Location |
+|---|---|---|
+| Web app + API | FastAPI + uvicorn | HF Spaces Docker (port 7860) |
+| Agent orchestrator | Python + Anthropic SDK | Same process |
+| MCP client | mcp Python SDK (stdio) | Same process |
+| MCP server | mcp Python SDK (subprocess) | Same process (spawned) |
+| RAG index | ChromaDB + fastembed | Built into Docker image (RUN python rag/ingest.py) |
+| Mock data | JSON files | In Docker image |
+| LLM | Claude claude-haiku-4-5 via API | Anthropic cloud |
+| Embedding | BAAI/bge-small-en-v1.5 via fastembed | Downloaded at Docker build time |
+
+**Cold-start behavior**: Hugging Face Spaces Docker containers do not spin down on the free tier (unlike Render). No cold-start delay.
+
+---
+
+## Evaluation
+
+### Question Set (25 questions)
+| Category | Count |
+|---|---|
+| Simple policy Q&A | 8 |
+| Multi-document questions | 4 |
+| Tool-requiring tasks | 5 |
+| Ambiguous requests | 4 |
+| Out-of-scope | 4 |
+
+### Metrics Reported
+| Metric | Definition |
+|---|---|
+| Groundedness rate | % of policy questions with citations in response |
+| Citation accuracy | % where cited document matches expected source |
+| Avg partial match | Token overlap between answer and gold answer |
+| Tool selection accuracy | % of tool tasks where expected tools were called |
+| Workflow completion rate | % of tool tasks completed end-to-end |
+| Escalation accuracy | % of ambiguous/OOS questions handled correctly |
+| Action safety rate | % of responses where irreversible actions were gated |
+| Latency p50/p95 | Measured over all 25 questions (warm HF Spaces) |
+
+### Ablation Study
+Run with `python evaluation/run_eval.py --k 5 --k-ablation 3`.
+Compares retrieval k=5 vs k=3 on groundedness and citation accuracy.
+
+### Results
+*Run `python evaluation/run_eval.py` after deployment to populate this section with actual metrics.*
+
+Expected targets (pre-eval estimates):
+- Groundedness: ≥ 80%
+- Citation accuracy: ≥ 75%
+- Tool selection accuracy: ≥ 85%
+- Action safety: 100%
+
+---
+
+## Design Decision Justifications
+
+| Decision | Rationale |
+|---|---|
+| **fastembed** over sentence-transformers | No PyTorch dependency; 33MB vs ~1GB; free-tier compatible |
+| **ChromaDB** over FAISS | Persistent, metadata-rich, built-in query filtering |
+| **stdio MCP transport** | Simplest for single-service deployment; no extra port |
+| **Claude Haiku** | Best cost/quality for iterative agentic loops; <$0.01 per conversation |
+| **HF Spaces Docker** | Truly free, no 30-day limit (unlike Render), ML-optimized |
+| **heading-aware chunking** | Policy documents have strong heading structure; reduces cross-section noise |
+| **Confirmation gate** | Required by project spec; prevents accidental irreversible actions |
