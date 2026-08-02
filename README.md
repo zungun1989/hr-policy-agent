@@ -1,17 +1,10 @@
----
-title: HR Policy Agent
-emoji: 🏢
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
-
 # Acme Corp HR Policy Agent
 
-An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Claude** as the reasoning backbone.
+An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Groq Llama-3.3-70b** as the reasoning backbone.
 
 **Quantic MSAIE Capstone Project** — Zeliha Ungun & Fahrettin Ungun
+
+**Live Demo**: https://hr-policy-agent-production.up.railway.app
 
 ---
 
@@ -35,12 +28,12 @@ FastAPI Web App  (/chat, /health, /demo/task1, /demo/task2)
        │
        ▼
 Agent Orchestrator  (agent/orchestrator.py)
-  └─ Anthropic Claude claude-haiku-4-5 via Anthropic Python SDK
+  └─ Groq llama-3.3-70b-versatile via Groq Python SDK
        │
        ├─ MCP Client (mcp Python SDK, stdio transport)
        │       │
        │       ▼
-       │  MCP Server (mcp/server.py — subprocess)
+       │  MCP Server (mcp_server/server.py — subprocess)
        │    ├─ search_policy_documents   → ChromaDB (RAG)
        │    ├─ get_policy_section        → ChromaDB (RAG)
        │    ├─ check_policy_compliance   → ChromaDB (RAG)
@@ -51,7 +44,7 @@ Agent Orchestrator  (agent/orchestrator.py)
        │    └─ draft_hr_email            → mock only, never sends (with confirmation)
        │
        └─ RAG Index: ChromaDB + fastembed (BAAI/bge-small-en-v1.5)
-                     built from corpus/ at startup
+                     built from corpus/ at Docker build time
 ```
 
 ---
@@ -60,12 +53,12 @@ Agent Orchestrator  (agent/orchestrator.py)
 
 ### Prerequisites
 - Python 3.12+
-- An Anthropic API key (`claude-haiku-4-5` or better)
+- A Groq API key (free at https://console.groq.com)
 
 ### Setup
 
 ```bash
-git clone https://github.com/zbezgin1989/hr-policy-agent.git
+git clone https://github.com/zungun1989/hr-policy-agent.git
 cd hr-policy-agent
 
 # Create virtual environment
@@ -78,7 +71,7 @@ pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-# Edit .env and add: ANTHROPIC_API_KEY=sk-ant-...
+# Edit .env and add: GROQ_API_KEY=gsk_...
 
 # Build RAG index (downloads ~33MB embedding model first run)
 python rag/ingest.py
@@ -97,7 +90,7 @@ curl http://localhost:8000/health
 
 Expected:
 ```json
-{"status": "ok", "rag_index": "loaded", "rag_chunk_count": 120, "mcp": "available"}
+{"status": "ok", "rag_index": "loaded", "rag_chunk_count": 113, "mcp": "available", "model": "groq/llama-3.3-70b-versatile"}
 ```
 
 ---
@@ -146,13 +139,13 @@ See [evaluation/](evaluation/) for the 25-question set and results.
 
 ---
 
-## Deployment (Hugging Face Spaces)
+## Deployment (Railway)
 
-The app is deployed to Hugging Face Spaces using Docker SDK. The RAG index is built during the Docker image build phase, so no cold-start indexing delay occurs.
+The app is deployed to Railway using Docker. The RAG index is built during the Docker image build phase (`RUN python rag/ingest.py` in Dockerfile), so no cold-start indexing delay occurs.
 
-**Deployed URL:** See [deployed.md](deployed.md)
+**Deployed URL**: https://hr-policy-agent-production.up.railway.app
 
-The free-tier HF Spaces Docker container stays alive (no cold-start spin-down like Render free tier). First request after a Space restart may take 10–20 seconds for model warmup.
+See [deployed.md](deployed.md) for full deployment details and environment variable configuration.
 
 ---
 
@@ -163,12 +156,12 @@ hr-policy-agent/
 ├── corpus/           # 10 markdown + 1 PDF policy documents
 ├── mock_data/        # Synthetic employee, PTO, benefits, ticket data (JSON)
 ├── rag/              # Ingestion pipeline + ChromaDB retriever
-├── mcp/              # MCP server + 8 tools
+├── mcp_server/       # MCP server + 8 tools (stdio transport)
 ├── agent/            # Agent orchestrator + prompts
 ├── app/              # FastAPI app + HTML chat UI
 ├── evaluation/       # 25-question eval set + run_eval.py
 ├── tests/            # Pytest smoke + MCP unit tests
-└── .github/workflows/ci.yml  # GitHub Actions CI/CD
+└── .github/workflows/ci.yml  # GitHub Actions CI
 ```
 
 ---

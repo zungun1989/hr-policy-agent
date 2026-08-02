@@ -2,14 +2,12 @@
 
 ## Deployed URL
 
-**Application**: https://huggingface.co/spaces/[HF_USERNAME]/hr-policy-agent
-
-> **Note**: Replace `[HF_USERNAME]` with your actual Hugging Face username after deployment.
+**Application**: https://hr-policy-agent-production.up.railway.app
 
 ## Health Endpoint
 
 ```
-GET https://huggingface.co/spaces/[HF_USERNAME]/hr-policy-agent/health
+GET https://hr-policy-agent-production.up.railway.app/health
 ```
 
 Expected response:
@@ -17,24 +15,23 @@ Expected response:
 {
   "status": "ok",
   "rag_index": "loaded",
-  "rag_chunk_count": 120,
+  "rag_chunk_count": 113,
   "mcp": "available",
-  "model": "claude-haiku-4-5-20251001"
+  "model": "groq/llama-3.3-70b-versatile"
 }
 ```
 
 ## Demo Endpoints
 
 ```
-POST https://huggingface.co/spaces/[HF_USERNAME]/hr-policy-agent/demo/task1
-POST https://huggingface.co/spaces/[HF_USERNAME]/hr-policy-agent/demo/task2
+POST https://hr-policy-agent-production.up.railway.app/demo/task1
+POST https://hr-policy-agent-production.up.railway.app/demo/task2
 ```
 
 ## Cold-Start Behavior
 
-**Hugging Face Spaces Docker (free tier) does NOT spin down after inactivity.** The container remains running 24/7. There is no cold-start delay for subsequent requests.
-
-However, the first request after a Space *restart* (e.g., after a new deployment or platform maintenance) may take 10–30 seconds due to:
+Railway free tier keeps the container alive as long as the $5 starter credit lasts.
+The first request after a redeploy may take 10–30 seconds due to:
 1. FastAPI application startup
 2. ChromaDB collection loading into memory
 3. fastembed model loading (~33MB)
@@ -43,11 +40,11 @@ The RAG index is pre-built into the Docker image (via `RUN python rag/ingest.py`
 
 ## Environment Variables Required
 
-Set these as **Hugging Face Space Secrets** (not committed to the repository):
+Set these as **Railway Service Variables**:
 
 | Variable | Description |
 |---|---|
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude claude-haiku-4-5 |
+| `GROQ_API_KEY` | Groq API key for llama-3.3-70b-versatile |
 
 Optional overrides (have defaults):
 | Variable | Default | Description |
@@ -60,9 +57,5 @@ Optional overrides (have defaults):
 
 GitHub Actions workflow at `.github/workflows/ci.yml`:
 - Triggers on push to `main` and all pull requests
-- Tests: RAG index build check + pytest suite
-- Deploy: pushes to HF Spaces only if tests pass and branch is `main`
-
-Required GitHub Secrets:
-- `HF_TOKEN`: Hugging Face write token
-- `HF_USERNAME`: Your Hugging Face username
+- Tests: RAG index build check + pytest suite (13 tests)
+- Railway auto-deploys from GitHub on push to `main` (no separate deploy step needed)
