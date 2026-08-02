@@ -48,7 +48,7 @@ def create_pdf():
 
     # Title
     pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 12, "Acme Corp — Company Holiday Calendar", ln=True, align="C")
+    pdf.cell(0, 12, "Acme Corp - Company Holiday Calendar", ln=True, align="C")
     pdf.set_font("Helvetica", "", 11)
     pdf.cell(0, 8, "Document ID: POL-011 | Effective: January 1, 2025", ln=True, align="C")
     pdf.ln(6)

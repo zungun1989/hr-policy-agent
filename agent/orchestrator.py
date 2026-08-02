@@ -1,21 +1,20 @@
 """
-Agent orchestrator: connects to the MCP server (stdio), calls Claude with MCP tools,
+Agent orchestrator: connects to the MCP server (stdio), calls Groq LLM with MCP tools,
 handles multi-step HR workflows, and returns cited, traced responses.
 """
 import asyncio
 import json
 import os
 import sys
-from typing import Any
 
-import anthropic
+from groq import Groq
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
 from agent.prompts import SYSTEM_PROMPT
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-MODEL = "claude-haiku-4-5-20251001"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+MODEL = "llama-3.3-70b-versatile"
 MAX_TOKENS = 2048
 
 MCP_SERVER_SCRIPT = os.path.join(
@@ -23,11 +22,14 @@ MCP_SERVER_SCRIPT = os.path.join(
 )
 
 
-def _tool_to_anthropic(tool) -> dict:
+def _tool_to_groq(tool) -> dict:
     return {
-        "name": tool.name,
-        "description": tool.description,
-        "input_schema": tool.inputSchema,
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.inputSchema,
+        },
     }
 
 
@@ -51,9 +53,10 @@ def _build_citations(tool_results: list[dict]) -> list[dict]:
 
 
 async def _run_agent(user_message: str) -> dict:
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = Groq(api_key=GROQ_API_KEY)
     tool_trace: list[dict] = []
     error_message: str | None = None
+    final_text = ""
 
     server_params = StdioServerParameters(
         command=sys.executable,
@@ -69,69 +72,85 @@ async def _run_agent(user_message: str) -> dict:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Discover tools from MCP server
                 tools_response = await session.list_tools()
-                anthropic_tools = [_tool_to_anthropic(t) for t in tools_response.tools]
+                groq_tools = [_tool_to_groq(t) for t in tools_response.tools]
 
-                messages = [{"role": "user", "content": user_message}]
+                messages: list[dict] = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message},
+                ]
 
-                # Agentic loop: Claude decides which tools to call
-                for _iteration in range(8):  # max 8 tool-call rounds
-                    response = client.messages.create(
+                for _iteration in range(8):
+                    response = client.chat.completions.create(
                         model=MODEL,
                         max_tokens=MAX_TOKENS,
-                        system=SYSTEM_PROMPT,
-                        tools=anthropic_tools,
+                        tools=groq_tools,
                         messages=messages,
                     )
 
-                    # Collect text and tool_use blocks
-                    tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
-                    text_blocks = [b for b in response.content if b.type == "text"]
+                    msg = response.choices[0].message
+                    tool_calls = msg.tool_calls or []
 
-                    if not tool_use_blocks:
-                        # No more tool calls → final response
-                        final_text = " ".join(b.text for b in text_blocks)
+                    if not tool_calls:
+                        final_text = msg.content or ""
                         break
 
+                    # Add assistant turn with tool calls
+                    messages.append({
+                        "role": "assistant",
+                        "content": msg.content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in tool_calls
+                        ],
+                    })
+
                     # Execute each tool call via MCP
-                    tool_results_for_message = []
-                    for block in tool_use_blocks:
-                        tool_name = block.name
-                        tool_input = block.input
+                    for tc in tool_calls:
+                        tool_name = tc.function.name
+                        try:
+                            tool_input = json.loads(tc.function.arguments)
+                        except Exception:
+                            tool_input = {}
 
                         try:
                             mcp_result = await session.call_tool(tool_name, tool_input)
-                            raw_result = json.loads(mcp_result.content[0].text) if mcp_result.content else {}
+                            raw_result = (
+                                json.loads(mcp_result.content[0].text)
+                                if mcp_result.content
+                                else {}
+                            )
                             is_error = False
                         except Exception as exc:
                             raw_result = {"error": str(exc)}
                             is_error = True
 
-                        trace_entry = {
+                        tool_trace.append({
                             "tool": tool_name,
                             "arguments": tool_input,
                             "result_summary": _summarize_result(raw_result),
                             "raw_result": raw_result,
                             "is_error": is_error,
-                        }
-                        tool_trace.append(trace_entry)
+                        })
 
-                        tool_results_for_message.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
                             "content": json.dumps(raw_result),
                         })
 
-                    # Add assistant turn and tool results to conversation
-                    messages.append({"role": "assistant", "content": response.content})
-                    messages.append({"role": "user", "content": tool_results_for_message})
-
                 else:
-                    # Safety: if we hit max iterations, take last text output
-                    final_text = " ".join(
-                        b.text for b in response.content if hasattr(b, "text")
-                    ) or "I was unable to complete this request within the allowed steps."
+                    final_text = (
+                        msg.content
+                        or "I was unable to complete this request within the allowed steps."
+                    )
 
     except Exception as e:
         error_message = str(e)
@@ -142,7 +161,6 @@ async def _run_agent(user_message: str) -> dict:
         )
 
     citations = _build_citations(tool_trace)
-    # Strip raw_result from public trace (keep structured summary only)
     public_trace = [
         {k: v for k, v in t.items() if k != "raw_result"}
         for t in tool_trace
