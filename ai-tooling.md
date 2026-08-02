@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project was built by Zeliha Ungun and Fahrettin Ungun as their Quantic MSAIE capstone. **Claude Code** (Anthropic's CLI AI agent, `claude-sonnet-4-6`) was used as an AI coding assistant throughout development — similar to how developers use GitHub Copilot — to accelerate implementation while all design decisions, integration choices, and validation remained with the team.
+This project was built by Zeliha Ungun and Fahrettin Ungun as their Quantic MSAIE project. **Claude Code** (Anthropic's CLI AI agent, `claude-sonnet-4-6`) was used as an AI coding assistant throughout development — similar to how developers use GitHub Copilot — to accelerate implementation while all design decisions, integration choices, and validation remained with the team.
 
 ---
 
