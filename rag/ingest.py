@@ -13,6 +13,10 @@ os.environ.setdefault("PYTHONHASHSEED", "42")
 
 CORPUS_PATH = os.environ.get("CORPUS_PATH", "./corpus")
 CHROMA_DB_PATH = os.environ.get("CHROMA_DB_PATH", "./rag/chroma_store")
+FASTEMBED_CACHE = os.environ.get(
+    "FASTEMBED_CACHE_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".fastembed_cache"),
+)
 CHUNK_SIZE_TOKENS = 400
 CHUNK_OVERLAP_TOKENS = 64
 
@@ -138,8 +142,8 @@ def build_index(chunks: list[dict], db_path: str) -> None:
 
     try:
         from fastembed import TextEmbedding
-        embed_model = TextEmbedding("BAAI/bge-small-en-v1.5")
-        print("  [OK] Using fastembed BAAI/bge-small-en-v1.5")
+        embed_model = TextEmbedding("BAAI/bge-small-en-v1.5", cache_dir=FASTEMBED_CACHE)
+        print(f"  [OK] Using fastembed BAAI/bge-small-en-v1.5 (cache: {FASTEMBED_CACHE})")
 
         class FastEmbedFn(EmbeddingFunction):
             def __call__(self, input: list[str]):
