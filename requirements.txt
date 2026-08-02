@@ -24,4 +24,4 @@ pytest-asyncio==0.24.0
 anyio==4.7.0
 
 # Evaluation helpers
-numpy==2.2.0
+numpy>=1.26,<2
