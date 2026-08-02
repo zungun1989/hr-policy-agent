@@ -16,12 +16,12 @@ import mcp.server.stdio
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 
-from mcp.tools.rag_tools import (
+from mcp_server.tools.rag_tools import (
     search_policy_documents,
     get_policy_section,
     check_policy_compliance,
 )
-from mcp.tools.hr_tools import (
+from mcp_server.tools.hr_tools import (
     lookup_employee_profile,
     check_pto_balance,
     lookup_benefits_status,
