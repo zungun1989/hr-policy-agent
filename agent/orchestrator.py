@@ -201,6 +201,6 @@ def _summarize_result(result: dict) -> str:
     return "OK"
 
 
-def run_agent(user_message: str) -> dict:
-    """Synchronous entry point for the FastAPI app."""
-    return asyncio.run(_run_agent(user_message))
+async def run_agent(user_message: str) -> dict:
+    """Async entry point for the FastAPI app."""
+    return await _run_agent(user_message)

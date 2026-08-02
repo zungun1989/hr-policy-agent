@@ -89,7 +89,7 @@ async def chat(req: ChatRequest):
 
     t0 = time.perf_counter()
     try:
-        result = run_agent(user_message)
+        result = await run_agent(user_message)
     except Exception as e:
         result = {
             "answer": f"An unexpected error occurred: {e}",
