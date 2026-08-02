@@ -1,0 +1,222 @@
+{
+  "version": "1.0",
+  "description": "Evaluation set for Acme Corp HR Policy Agent. 25 questions covering all required categories.",
+  "categories": {
+    "simple_policy": "Straightforward single-document policy questions",
+    "multi_doc": "Questions requiring retrieval from 2+ policy documents",
+    "tool_task": "Tasks requiring structured data tool calls (employee lookup, PTO balance, etc.)",
+    "ambiguous": "Ambiguous or incomplete requests requiring clarification",
+    "out_of_scope": "Questions outside HR policy scope — agent should decline"
+  },
+  "questions": [
+    {
+      "id": "Q01",
+      "category": "simple_policy",
+      "question": "How many PTO days do full-time employees accrue per year after 3 years of service?",
+      "gold_answer": "20 days (160 hours) per year, accruing at 6.15 hours per pay period.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-001 — PTO Policy",
+      "expected_cited_section": "PTO Accrual Rates"
+    },
+    {
+      "id": "Q02",
+      "category": "simple_policy",
+      "question": "How much advance notice is required to request 4 days of PTO?",
+      "gold_answer": "At least 5 business days in advance.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-001 — PTO Policy",
+      "expected_cited_section": "Advance Notice Requirements"
+    },
+    {
+      "id": "Q03",
+      "category": "simple_policy",
+      "question": "Can I expense a personal laptop for reimbursement if mine breaks?",
+      "gold_answer": "No. Acme Corp provides standard-issue laptops. Employees may not expense a personal laptop as a substitute for the company-provided device.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-003 — Expense Policy",
+      "expected_cited_section": "Laptop and Computer Equipment"
+    },
+    {
+      "id": "Q04",
+      "category": "simple_policy",
+      "question": "What is the daily meal per diem for domestic business travel?",
+      "gold_answer": "$75 per day (including all meals).",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-010 — Travel Policy",
+      "expected_cited_section": "Meals and Per Diem"
+    },
+    {
+      "id": "Q05",
+      "category": "simple_policy",
+      "question": "When do full-time employee benefits become effective after hire?",
+      "gold_answer": "On the first day of the month following 30 days of employment.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-004 — Benefits Policy",
+      "expected_cited_section": "Full-Time Employees"
+    },
+    {
+      "id": "Q06",
+      "category": "simple_policy",
+      "question": "How long is the employee introductory (probationary) period?",
+      "gold_answer": "90 days. The manager completes a 90-Day Performance Review at day 90.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-005 — Onboarding Policy",
+      "expected_cited_section": "Days 61-90 and End of Introductory Period"
+    },
+    {
+      "id": "Q07",
+      "category": "simple_policy",
+      "question": "How many weeks of paid parental leave does a primary caregiver receive?",
+      "gold_answer": "12 weeks at 100% base salary.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-008 — Leave Policy",
+      "expected_cited_section": "Entitlement"
+    },
+    {
+      "id": "Q08",
+      "category": "simple_policy",
+      "question": "What is the annual 401(k) employer match at Acme Corp?",
+      "gold_answer": "100% match on the first 3% of salary deferred, and 50% match on the next 2%, for a maximum employer contribution of 4% of salary.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_doc": "POL-004 — Benefits Policy",
+      "expected_cited_section": "401(k) Retirement Plan"
+    },
+    {
+      "id": "Q09",
+      "category": "multi_doc",
+      "question": "I want to work remotely from another state for 6 weeks. What approvals do I need AND what are the security requirements?",
+      "gold_answer": "Approvals required: manager + HR + Finance (since >30 days). Security requirements per POL-006: must use VPN at all times, only company-issued or MDM-enrolled devices, WPA2/WPA3 home network, no public Wi-Fi without VPN.",
+      "expected_tools": ["search_policy_documents", "check_policy_compliance"],
+      "expected_cited_docs": ["POL-002 — Remote Work Policy", "POL-006 — Data Security Policy"],
+      "is_multi_doc": true
+    },
+    {
+      "id": "Q10",
+      "category": "multi_doc",
+      "question": "Can I use my personal iPhone to access company email and Slack? What are the requirements?",
+      "gold_answer": "Yes, but the device must be enrolled in MDM, have a passcode/biometric lock, run a supported OS version, and have remote wipe capability enabled. Per POL-006, personal devices cannot access Restricted data.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_docs": ["POL-006 — Data Security Policy", "POL-009 — Equipment Policy"],
+      "is_multi_doc": true
+    },
+    {
+      "id": "Q11",
+      "category": "multi_doc",
+      "question": "I'm a new hire in my first 80 days. Can I take PTO and do I have benefits yet?",
+      "gold_answer": "PTO cannot be used until after 90 days except for documented medical necessity. Benefits become effective the first of the month following 30 days of employment.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_docs": ["POL-001 — PTO Policy", "POL-004 — Benefits Policy"],
+      "is_multi_doc": true
+    },
+    {
+      "id": "Q12",
+      "category": "multi_doc",
+      "question": "I need to travel internationally for business. What approvals do I need and what security precautions must I take?",
+      "gold_answer": "Approvals: manager + VP + Finance. Register trip 5 days before departure. Use VPN, lock devices in hotel safe, avoid customs-sensitive countries without IT Security clearance. Per POL-010 and POL-006.",
+      "expected_tools": ["search_policy_documents"],
+      "expected_cited_docs": ["POL-010 — Travel Policy", "POL-006 — Data Security Policy"],
+      "is_multi_doc": true
+    },
+    {
+      "id": "Q13",
+      "category": "tool_task",
+      "question": "My employee ID is EMP003 (Carol). Do I have enough PTO to take 5 days off next month?",
+      "gold_answer": "EMP003 (Carol Lee) has 8.1 available PTO days (65 hours). 5 days = 40 hours, so yes, sufficient balance. Manager approval required with 5+ business days notice.",
+      "expected_tools": ["lookup_employee_profile", "check_pto_balance", "search_policy_documents"],
+      "requires_employee_data": true
+    },
+    {
+      "id": "Q14",
+      "category": "tool_task",
+      "question": "I'm EMP002 (Bob). I want to take 2 days off. Do I have PTO available?",
+      "gold_answer": "EMP002 (Bob Martinez) has a negative PTO balance (-0.6 days / -4.8 hours). He cannot take 2 days of paid PTO; he may take unpaid leave with manager approval.",
+      "expected_tools": ["lookup_employee_profile", "check_pto_balance"],
+      "requires_employee_data": true
+    },
+    {
+      "id": "Q15",
+      "category": "tool_task",
+      "question": "What medical plan is EMP007 (Grace) enrolled in, and does she have dental coverage?",
+      "gold_answer": "EMP007 (Grace Park) is enrolled in the PPO Select medical plan (family tier) and has dental insurance enrolled.",
+      "expected_tools": ["lookup_employee_profile", "lookup_benefits_status"],
+      "requires_employee_data": true
+    },
+    {
+      "id": "Q16",
+      "category": "tool_task",
+      "question": "I'm EMP001 (Alice). I want to work from New York for 6 weeks. Am I eligible and what do I need to do?",
+      "gold_answer": "EMP001 Alice is fully remote eligible, primary state CA. 6 weeks in NY triggers out-of-state rules (>14 days): needs manager + HR + Finance approval. Security: VPN required, MDM device. Within 42-day annual limit.",
+      "expected_tools": ["lookup_employee_profile", "search_policy_documents", "check_policy_compliance"],
+      "requires_employee_data": true
+    },
+    {
+      "id": "Q17",
+      "category": "tool_task",
+      "question": "Can you create an HR ticket for a PTO request for EMP003 for October 6-8? My employee ID is EMP003.",
+      "gold_answer": "Agent should show a preview first (requires_confirmation: true) before creating the ticket. After confirmation, TKT-XXXXXXXX is created.",
+      "expected_tools": ["lookup_employee_profile", "check_pto_balance", "create_mock_hr_ticket"],
+      "requires_confirmation": true,
+      "requires_employee_data": true
+    },
+    {
+      "id": "Q18",
+      "category": "ambiguous",
+      "question": "I need some time off.",
+      "gold_answer": "Agent should ask clarifying questions: How many days? When? What type (PTO, sick leave, parental, bereavement)? What is your employee ID?",
+      "expected_behavior": "clarification_requested",
+      "expected_tools": []
+    },
+    {
+      "id": "Q19",
+      "category": "ambiguous",
+      "question": "I have an issue with my manager.",
+      "gold_answer": "Agent should ask for clarification (performance issue vs. harassment vs. conflict) and provide relevant policy guidance and reporting options based on the clarification.",
+      "expected_behavior": "clarification_requested",
+      "expected_tools": []
+    },
+    {
+      "id": "Q20",
+      "category": "ambiguous",
+      "question": "Can I expense this?",
+      "gold_answer": "Agent should ask: what is the item/expense, how much, and what is the business purpose? Without this information, cannot answer.",
+      "expected_behavior": "clarification_requested",
+      "expected_tools": []
+    },
+    {
+      "id": "Q21",
+      "category": "ambiguous",
+      "question": "I want to work from another country.",
+      "gold_answer": "Agent should ask which country, for how long, and what the employee's role and ID are. International remote work requires VP, Legal, Finance, and IT Security approval — but specifics depend on the destination.",
+      "expected_behavior": "clarification_requested",
+      "expected_tools": []
+    },
+    {
+      "id": "Q22",
+      "category": "out_of_scope",
+      "question": "Can you help me file my personal federal income tax return?",
+      "gold_answer": "Agent should decline: this is outside HR policy scope. Suggest EAP financial planning services (POL-004).",
+      "expected_behavior": "out_of_scope_declined"
+    },
+    {
+      "id": "Q23",
+      "category": "out_of_scope",
+      "question": "What are the best restaurants near the San Francisco office?",
+      "gold_answer": "Agent should decline: outside HR policy scope.",
+      "expected_behavior": "out_of_scope_declined"
+    },
+    {
+      "id": "Q24",
+      "category": "out_of_scope",
+      "question": "Can you write a Python script to automate my Excel reports?",
+      "gold_answer": "Agent should decline: outside HR policy scope.",
+      "expected_behavior": "out_of_scope_declined"
+    },
+    {
+      "id": "Q25",
+      "category": "out_of_scope",
+      "question": "What is the current stock price of Acme Corp?",
+      "gold_answer": "Agent should decline: outside HR policy scope.",
+      "expected_behavior": "out_of_scope_declined"
+    }
+  ]
+}
