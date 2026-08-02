@@ -16,21 +16,21 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def test_search_policy_documents_returns_results():
-    from mcp.tools.rag_tools import search_policy_documents
+    from mcp_server.tools.rag_tools import search_policy_documents
     result = search_policy_documents("PTO accrual rate", top_k=3)
     assert "results" in result
     assert result["total_results"] >= 0  # may be 0 if index not built in CI
 
 
 def test_get_policy_section_known_doc():
-    from mcp.tools.rag_tools import get_policy_section
+    from mcp_server.tools.rag_tools import get_policy_section
     result = get_policy_section("pto_policy", "manager approval", top_k=2)
     assert "doc_id" in result
     assert result["doc_id"] == "pto_policy"
 
 
 def test_check_policy_compliance_returns_structure():
-    from mcp.tools.rag_tools import check_policy_compliance
+    from mcp_server.tools.rag_tools import check_policy_compliance
     result = check_policy_compliance("employee working remotely from New York for 6 weeks")
     assert "relevant_policies" in result
     assert isinstance(result["relevant_policies"], list)
@@ -41,7 +41,7 @@ def test_check_policy_compliance_returns_structure():
 # ---------------------------------------------------------------------------
 
 def test_lookup_employee_profile_found():
-    from mcp.tools.hr_tools import lookup_employee_profile
+    from mcp_server.tools.hr_tools import lookup_employee_profile
     result = lookup_employee_profile("EMP001")
     assert result["found"] is True
     emp = result["employee"]
@@ -51,14 +51,14 @@ def test_lookup_employee_profile_found():
 
 
 def test_lookup_employee_profile_not_found():
-    from mcp.tools.hr_tools import lookup_employee_profile
+    from mcp_server.tools.hr_tools import lookup_employee_profile
     result = lookup_employee_profile("EMP999")
     assert result["found"] is False
     assert "error" in result
 
 
 def test_check_pto_balance_found():
-    from mcp.tools.hr_tools import check_pto_balance
+    from mcp_server.tools.hr_tools import check_pto_balance
     result = check_pto_balance("EMP003")
     assert result["found"] is True
     bal = result["pto_balance"]
@@ -67,13 +67,13 @@ def test_check_pto_balance_found():
 
 
 def test_check_pto_balance_not_found():
-    from mcp.tools.hr_tools import check_pto_balance
+    from mcp_server.tools.hr_tools import check_pto_balance
     result = check_pto_balance("EMP999")
     assert result["found"] is False
 
 
 def test_lookup_benefits_status_found():
-    from mcp.tools.hr_tools import lookup_benefits_status
+    from mcp_server.tools.hr_tools import lookup_benefits_status
     result = lookup_benefits_status("EMP001")
     assert result["found"] is True
     ben = result["benefits"]
@@ -86,7 +86,7 @@ def test_lookup_benefits_status_found():
 # ---------------------------------------------------------------------------
 
 def test_create_mock_hr_ticket_requires_confirmation():
-    from mcp.tools.hr_tools import create_mock_hr_ticket
+    from mcp_server.tools.hr_tools import create_mock_hr_ticket
     result = create_mock_hr_ticket(
         employee_id="EMP003",
         ticket_type="pto_request",
@@ -99,7 +99,7 @@ def test_create_mock_hr_ticket_requires_confirmation():
 
 
 def test_create_mock_hr_ticket_with_confirmation():
-    from mcp.tools.hr_tools import create_mock_hr_ticket
+    from mcp_server.tools.hr_tools import create_mock_hr_ticket
     result = create_mock_hr_ticket(
         employee_id="EMP003",
         ticket_type="pto_request",
@@ -113,7 +113,7 @@ def test_create_mock_hr_ticket_with_confirmation():
 
 
 def test_draft_hr_email_requires_confirmation():
-    from mcp.tools.hr_tools import draft_hr_email
+    from mcp_server.tools.hr_tools import draft_hr_email
     result = draft_hr_email(
         to_role="manager",
         subject="Remote Work Request",
@@ -128,7 +128,7 @@ def test_draft_hr_email_requires_confirmation():
 
 def test_draft_hr_email_action_safety():
     """Action safety: draft is always mock, never sends real email."""
-    from mcp.tools.hr_tools import draft_hr_email
+    from mcp_server.tools.hr_tools import draft_hr_email
     result = draft_hr_email(
         to_role="hr",
         subject="Test",
@@ -145,7 +145,7 @@ def test_draft_hr_email_action_safety():
 # ---------------------------------------------------------------------------
 
 def test_mcp_server_tool_list_importable():
-    from mcp.server import TOOLS
+    from mcp_server.server import TOOLS
     tool_names = {t.name for t in TOOLS}
     expected = {
         "search_policy_documents",

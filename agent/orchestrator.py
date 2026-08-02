@@ -18,7 +18,7 @@ MODEL = "llama-3.3-70b-versatile"
 MAX_TOKENS = 2048
 
 MCP_SERVER_SCRIPT = os.path.join(
-    os.path.dirname(__file__), "..", "mcp", "server.py"
+    os.path.dirname(__file__), "..", "mcp_server", "server.py"
 )
 
 
