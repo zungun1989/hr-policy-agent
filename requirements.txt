@@ -9,7 +9,7 @@ groq==0.13.0
 
 # RAG / Vector store
 chromadb==0.5.23
-fastembed>=0.5.0
+fastembed==0.4.1
 
 # PDF parsing & generation
 pypdf==5.1.0
