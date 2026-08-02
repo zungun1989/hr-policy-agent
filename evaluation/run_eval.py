@@ -1,28 +1,42 @@
 """
 Evaluation script for the Acme Corp HR Policy Agent.
-Runs the 25-question eval set and reports metrics.
+Runs the 25-question eval set against the deployed API and reports metrics.
 
 Usage:
-  python evaluation/run_eval.py [--k 5] [--k-ablation 3] [--output results.json]
+  python evaluation/run_eval.py [--base-url URL] [--k 5] [--k-ablation 3] [--output results.json]
 
-Requires ANTHROPIC_API_KEY and a built RAG index.
+Defaults to the Railway deployment. Override with --base-url http://localhost:8000 for local.
 """
 import argparse
 import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import httpx
 
-from agent.orchestrator import run_agent
+DEFAULT_BASE_URL = "https://hr-policy-agent-production.up.railway.app"
+REQUEST_TIMEOUT = 120  # seconds — Groq can be slow on complex queries
 
 
 def load_questions(path: str) -> list[dict]:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     return data["questions"]
+
+
+def call_chat(base_url: str, question: str, employee_id: str | None = None) -> dict:
+    payload = {"message": question}
+    if employee_id:
+        payload["employee_id"] = employee_id
+    resp = httpx.post(
+        f"{base_url.rstrip('/')}/chat",
+        json=payload,
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _citation_match(citations: list[dict], expected_doc: str) -> bool:
@@ -41,7 +55,6 @@ def _contains_keywords(text: str, gold: str, threshold: float = 0.3) -> float:
 def _is_grounded(answer: str, citations: list[dict]) -> bool:
     if not citations:
         return False
-    # Check if response contains policy document references
     doc_refs = ["POL-", "Policy", "policy", "section", "Section"]
     return any(ref in answer for ref in doc_refs)
 
@@ -75,7 +88,7 @@ def _action_safe(tool_trace: list[dict]) -> bool:
     return True
 
 
-def run_evaluation(questions: list[dict], top_k: int = 5) -> dict:
+def run_evaluation(questions: list[dict], base_url: str, top_k: int = 5) -> dict:
     results = []
     latencies = []
 
@@ -84,17 +97,16 @@ def run_evaluation(questions: list[dict], top_k: int = 5) -> dict:
 
         t0 = time.perf_counter()
         try:
-            result = run_agent(q["question"])
+            result = call_chat(base_url, q["question"], q.get("employee_id"))
         except Exception as e:
-            result = {"answer": f"ERROR: {e}", "citations": [], "tool_trace": [], "error": str(e)}
-        latency_ms = int((time.perf_counter() - t0) * 1000)
+            result = {"answer": f"ERROR: {e}", "citations": [], "tool_trace": [], "latency_ms": 0}
+        latency_ms = result.get("latency_ms") or int((time.perf_counter() - t0) * 1000)
         latencies.append(latency_ms)
 
         answer = result.get("answer", "")
         citations = result.get("citations", [])
         tool_trace = result.get("tool_trace", [])
 
-        # Compute per-question metrics
         grounded = _is_grounded(answer, citations)
         cit_match = _citation_match(citations, q.get("expected_cited_doc", ""))
         partial_match = _contains_keywords(answer, q.get("gold_answer", ""))
@@ -129,7 +141,6 @@ def run_evaluation(questions: list[dict], top_k: int = 5) -> dict:
         print(f"   grounded={grounded} cit_match={cit_match} partial={partial_match:.2f} "
               f"tool_ok={tool_ok} latency={latency_ms}ms")
 
-    # Aggregate metrics
     n = len(results)
     policy_qs = [r for r in results if r["category"] in ("simple_policy", "multi_doc")]
     tool_qs = [r for r in results if r["category"] == "tool_task"]
@@ -140,7 +151,8 @@ def run_evaluation(questions: list[dict], top_k: int = 5) -> dict:
     p95 = latencies_sorted[int(n * 0.95)]
 
     metrics = {
-        "evaluation_date": datetime.utcnow().isoformat() + "Z",
+        "evaluation_date": datetime.now(timezone.utc).isoformat(),
+        "base_url": base_url,
         "top_k": top_k,
         "n_questions": n,
         "groundedness_rate": round(sum(r["grounded"] for r in policy_qs) / max(len(policy_qs), 1), 2),
@@ -159,7 +171,8 @@ def run_evaluation(questions: list[dict], top_k: int = 5) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--k", type=int, default=5, help="Retrieval top-k")
+    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Base URL of deployed app")
+    parser.add_argument("--k", type=int, default=5, help="Retrieval top-k (informational only)")
     parser.add_argument("--k-ablation", type=int, default=None, help="Run ablation with this k")
     parser.add_argument("--output", default="evaluation/results.json")
     args = parser.parse_args()
@@ -167,16 +180,17 @@ def main():
     questions_path = os.path.join(os.path.dirname(__file__), "eval_questions.json")
     questions = load_questions(questions_path)
 
-    print(f"\n=== Evaluation Run (k={args.k}) ===")
-    eval_result = run_evaluation(questions, top_k=args.k)
+    print(f"\n=== Evaluation Run (k={args.k}, url={args.base_url}) ===")
+    eval_result = run_evaluation(questions, base_url=args.base_url, top_k=args.k)
 
     output = {"k": args.k, "results": eval_result}
 
     if args.k_ablation:
         print(f"\n=== Ablation Run (k={args.k_ablation}) ===")
-        ablation_result = run_evaluation(questions, top_k=args.k_ablation)
+        ablation_result = run_evaluation(questions, base_url=args.base_url, top_k=args.k_ablation)
         output["ablation"] = {"k": args.k_ablation, "results": ablation_result}
 
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2)
 
