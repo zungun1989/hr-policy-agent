@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 import httpx
 
 DEFAULT_BASE_URL = "https://hr-policy-agent-production.up.railway.app"
-REQUEST_TIMEOUT = 120  # seconds — Groq can be slow on complex queries
+REQUEST_TIMEOUT = 120  # seconds
+REQUEST_DELAY = 30     # seconds between questions — Gemini free tier 5 RPM, each Q uses 2-3 LLM calls
 
 
 def load_questions(path: str) -> list[dict]:
@@ -140,6 +141,8 @@ def run_evaluation(questions: list[dict], base_url: str, top_k: int = 5) -> dict
         results.append(record)
         print(f"   grounded={grounded} cit_match={cit_match} partial={partial_match:.2f} "
               f"tool_ok={tool_ok} latency={latency_ms}ms")
+        if i < len(questions):
+            time.sleep(REQUEST_DELAY)
 
     n = len(results)
     policy_qs = [r for r in results if r["category"] in ("simple_policy", "multi_doc")]
