@@ -159,10 +159,9 @@ async def _run_agent(user_message: str) -> dict:
                 final_text = msg.get("content") or ""
                 break
 
-            # Build assistant message preserving thought_signature from raw response.
-            # httpx returns Gemini's raw JSON, so extra_content.google.thought_signature
-            # is present. We re-emit it as a flat "thought_signature" field which is
-            # what the Gemini API expects on the next request.
+            # Log raw tool_calls to diagnose thought_signature field location
+            print(f"[DEBUG] raw tool_calls: {json.dumps(tool_calls)}", file=sys.stderr, flush=True)
+
             assistant_tool_calls = []
             for tc in tool_calls:
                 ec = tc.get("extra_content", {}) or {}
