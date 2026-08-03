@@ -1,17 +1,14 @@
 """
-Agent orchestrator: connects to the MCP server (stdio), calls Gemini LLM with MCP tools,
+Agent orchestrator: connects to the MCP server (stdio), calls Gemini via httpx,
 handles multi-step HR workflows, and returns cited, traced responses.
-
-The MCP subprocess is started ONCE at app startup via startup_mcp() and kept alive
-for the lifetime of the container, avoiding per-request subprocess overhead.
 """
 import asyncio
 import json
 import os
+import re
 import sys
 
-from google import genai
-from google.genai import types
+import httpx
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
@@ -20,24 +17,22 @@ from agent.prompts import SYSTEM_PROMPT
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 MODEL = "gemini-flash-latest"
 MAX_TOKENS = 1024
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
-MCP_SERVER_SCRIPT = os.path.join(
-    os.path.dirname(__file__), "..", "mcp_server", "server.py"
-)
-
-# Persistent MCP connection — initialized at startup, reused for every request
 _session: ClientSession | None = None
-_mcp_tools: list = []
+_groq_tools: list[dict] = []
 _stdio_cm = None
 
 
-def _tool_to_fn_decl(tool) -> types.FunctionDeclaration:
-    schema = {k: v for k, v in tool.inputSchema.items() if k != "additionalProperties"}
-    return types.FunctionDeclaration(
-        name=tool.name,
-        description=tool.description,
-        parameters=schema,
-    )
+def _tool_to_openai(tool) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.inputSchema,
+        },
+    }
 
 
 def _build_citations(tool_results: list[dict]) -> list[dict]:
@@ -60,39 +55,30 @@ def _build_citations(tool_results: list[dict]) -> list[dict]:
 
 
 async def startup_mcp() -> None:
-    """Start the MCP subprocess once at app startup. Called by FastAPI lifespan."""
-    global _session, _mcp_tools, _stdio_cm
-
+    global _session, _groq_tools, _stdio_cm
     server_params = StdioServerParameters(
         command=sys.executable,
-        args=[MCP_SERVER_SCRIPT],
+        args=[os.path.join(os.path.dirname(__file__), "..", "mcp_server", "server.py")],
         env={**os.environ},
     )
-
     try:
         _stdio_cm = stdio_client(server_params)
         read, write = await _stdio_cm.__aenter__()
-
         session = ClientSession(read, write)
         await session.__aenter__()
         await session.initialize()
-
         tools_response = await session.list_tools()
         _session = session
-        _mcp_tools = tools_response.tools
-        print(
-            f"[MCP] Started — {len(_mcp_tools)} tools available",
-            file=sys.stderr, flush=True,
-        )
+        _groq_tools = [_tool_to_openai(t) for t in tools_response.tools]
+        print(f"[MCP] Started — {len(_groq_tools)} tools available", file=sys.stderr, flush=True)
     except Exception as e:
         err = e.exceptions[0] if hasattr(e, "exceptions") else e
         print(f"[MCP] Startup failed: {type(err).__name__}: {err}", file=sys.stderr, flush=True)
         _session = None
-        _mcp_tools = []
+        _groq_tools = []
 
 
 async def shutdown_mcp() -> None:
-    """Tear down the MCP subprocess. Called by FastAPI lifespan on shutdown."""
     global _session, _stdio_cm
     if _session:
         try:
@@ -108,89 +94,101 @@ async def shutdown_mcp() -> None:
         _stdio_cm = None
 
 
+async def _call_llm(messages: list[dict]) -> dict:
+    """POST directly to Gemini OpenAI-compat endpoint via httpx (preserves all fields)."""
+    async with httpx.AsyncClient(timeout=120) as http:
+        resp = await http.post(
+            _GEMINI_URL,
+            headers={"Authorization": f"Bearer {GEMINI_API_KEY}"},
+            json={
+                "model": MODEL,
+                "max_tokens": MAX_TOKENS,
+                "tools": _groq_tools,
+                "messages": messages,
+            },
+        )
+        if resp.status_code == 429:
+            raise httpx.HTTPStatusError("429", request=resp.request, response=resp)
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def _run_agent(user_message: str) -> dict:
-    global _session, _mcp_tools
+    global _session, _groq_tools
 
     if _session is None:
         return {
-            "answer": (
-                "The HR tools are temporarily unavailable. "
-                "Please contact HR directly at hr@acmecorp.com."
-            ),
+            "answer": "The HR tools are temporarily unavailable. Please contact HR directly at hr@acmecorp.com.",
             "citations": [],
             "tool_trace": [],
             "error": "MCP session not initialized",
         }
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
     tool_trace: list[dict] = []
     error_message: str | None = None
     final_text = ""
 
     try:
-        fn_decls = [_tool_to_fn_decl(t) for t in _mcp_tools]
-        config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            tools=[types.Tool(function_declarations=fn_decls)],
-            max_output_tokens=MAX_TOKENS,
-        )
-
-        contents: list = [
-            types.Content(role="user", parts=[types.Part(text=user_message)])
+        messages: list[dict] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
         ]
 
         for _iteration in range(8):
             for _retry in range(6):
                 try:
-                    _snap = list(contents)
-                    response = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: client.models.generate_content(
-                            model=MODEL,
-                            contents=_snap,
-                            config=config,
-                        ),
-                    )
+                    response_json = await _call_llm(messages)
                     break
                 except Exception as _re:
-                    import re as _re_mod
                     _re_err = _re.exceptions[0] if hasattr(_re, "exceptions") else _re
                     _err_str = str(_re_err)
                     if "429" not in _err_str and "RESOURCE_EXHAUSTED" not in _err_str:
                         raise
-                    _match = _re_mod.search(r"retry in (\d+(?:\.\d+)?)s", _err_str)
-                    _wait = float(_match.group(1)) if _match else (13 * (2 ** _retry))
-                    _wait = min(_wait, 13)
+                    _match = re.search(r"retry in (\d+(?:\.\d+)?)s", _err_str)
+                    _wait = float(_match.group(1)) if _match else min(13 * (2 ** _retry), 13)
                     if _retry < 5:
-                        print(f"[LLM] 429 — waiting {_wait:.0f}s before retry", file=sys.stderr, flush=True)
+                        print(f"[LLM] 429 — waiting {_wait:.0f}s", file=sys.stderr, flush=True)
                         await asyncio.sleep(_wait)
                     else:
                         raise
 
-            model_content = response.candidates[0].content
+            msg = response_json["choices"][0]["message"]
+            tool_calls = msg.get("tool_calls") or []
 
-            function_call_parts = [
-                p for p in (model_content.parts or [])
-                if p.function_call is not None
-            ]
-
-            if not function_call_parts:
-                text_parts = [p for p in (model_content.parts or []) if p.text]
-                final_text = "".join(p.text for p in text_parts)
+            if not tool_calls:
+                final_text = msg.get("content") or ""
                 break
 
-            # Append the model's full Content object — the SDK carries thought_signatures
-            # automatically so the next request passes validation without any manual handling.
-            contents.append(model_content)
+            # Build assistant message preserving thought_signature from raw response.
+            # httpx returns Gemini's raw JSON, so extra_content.google.thought_signature
+            # is present. We re-emit it as a flat "thought_signature" field which is
+            # what the Gemini API expects on the next request.
+            assistant_tool_calls = []
+            for tc in tool_calls:
+                ec = tc.get("extra_content", {}) or {}
+                sig = ec.get("google", {}).get("thought_signature", "skip_thought_signature_validator")
+                assistant_tool_calls.append({
+                    "id": tc["id"],
+                    "type": tc["type"],
+                    "function": tc["function"],
+                    "thought_signature": sig,
+                })
 
-            function_response_parts = []
-            for part in function_call_parts:
-                fc = part.function_call
-                tool_name = fc.name
-                tool_args = dict(fc.args) if fc.args else {}
+            messages.append({
+                "role": "assistant",
+                "content": msg.get("content"),
+                "tool_calls": assistant_tool_calls,
+            })
+
+            for tc in tool_calls:
+                tool_name = tc["function"]["name"]
+                try:
+                    tool_input = json.loads(tc["function"]["arguments"])
+                except Exception:
+                    tool_input = {}
 
                 try:
-                    mcp_result = await _session.call_tool(tool_name, tool_args)
+                    mcp_result = await _session.call_tool(tool_name, tool_input)
                     raw_result = (
                         json.loads(mcp_result.content[0].text)
                         if mcp_result.content
@@ -203,29 +201,20 @@ async def _run_agent(user_message: str) -> dict:
 
                 tool_trace.append({
                     "tool": tool_name,
-                    "arguments": tool_args,
+                    "arguments": tool_input,
                     "result_summary": _summarize_result(raw_result),
                     "raw_result": raw_result,
                     "is_error": is_error,
                 })
 
-                function_response_parts.append(
-                    types.Part(
-                        function_response=types.FunctionResponse(
-                            name=tool_name,
-                            response=raw_result,
-                        )
-                    )
-                )
-
-            contents.append(
-                types.Content(role="user", parts=function_response_parts)
-            )
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": json.dumps(raw_result),
+                })
 
         else:
-            final_text = (
-                "I was unable to complete this request within the allowed steps."
-            )
+            final_text = msg.get("content") or "Unable to complete this request within the allowed steps."
 
     except Exception as e:
         err = e.exceptions[0] if hasattr(e, "exceptions") else e
@@ -237,10 +226,7 @@ async def _run_agent(user_message: str) -> dict:
         )
 
     citations = _build_citations(tool_trace)
-    public_trace = [
-        {k: v for k, v in t.items() if k != "raw_result"}
-        for t in tool_trace
-    ]
+    public_trace = [{k: v for k, v in t.items() if k != "raw_result"} for t in tool_trace]
 
     return {
         "answer": final_text,
@@ -278,5 +264,4 @@ def _summarize_result(result: dict) -> str:
 
 
 async def run_agent(user_message: str) -> dict:
-    """Async entry point for the FastAPI app."""
     return await _run_agent(user_message)
