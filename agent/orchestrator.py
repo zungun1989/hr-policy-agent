@@ -159,19 +159,19 @@ async def _run_agent(user_message: str) -> dict:
                 final_text = msg.get("content") or ""
                 break
 
-            # Log raw tool_calls to diagnose thought_signature field location
-            print(f"[DEBUG] raw tool_calls: {json.dumps(tool_calls)}", file=sys.stderr, flush=True)
-
+            # Round-trip extra_content (which contains thought_signature) exactly as
+            # Gemini sent it. The OpenAI-compat endpoint uses extra_content.google.thought_signature
+            # in both directions — flattening it to a top-level field causes 400 errors.
             assistant_tool_calls = []
             for tc in tool_calls:
-                ec = tc.get("extra_content", {}) or {}
-                sig = ec.get("google", {}).get("thought_signature", "skip_thought_signature_validator")
-                assistant_tool_calls.append({
+                tc_out = {
                     "id": tc["id"],
                     "type": tc["type"],
                     "function": tc["function"],
-                    "thought_signature": sig,
-                })
+                }
+                if "extra_content" in tc:
+                    tc_out["extra_content"] = tc["extra_content"]
+                assistant_tool_calls.append(tc_out)
 
             messages.append({
                 "role": "assistant",
