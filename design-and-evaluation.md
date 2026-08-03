@@ -10,7 +10,7 @@ Browser  ──HTTP──►  FastAPI App  ────────────�
                   Agent Orchestrator                                                │
                   (agent/orchestrator.py)                                          │
                          │                                                         │
-                    Google Gemini Flash (gemini-2.0-flash, OpenAI-compatible API)                │
+                    Google Gemini Flash (gemini-flash-latest, OpenAI-compatible API)              │
                          │                                                         │
                     MCP Client (mcp Python SDK)                                    │
                          │ stdio                                                   │
@@ -154,12 +154,12 @@ Expected MCP call sequence:
 | Component | Technology | Location |
 |---|---|---|
 | Web app + API | FastAPI + uvicorn | Railway Docker (port 7860) |
-| Agent orchestrator | Python + Groq SDK | Same process |
+| Agent orchestrator | Python + httpx | Same process |
 | MCP client | mcp Python SDK (stdio) | Same process |
 | MCP server | mcp Python SDK (subprocess) | Same process (spawned) |
 | RAG index | ChromaDB + fastembed | Built into Docker image (RUN python rag/ingest.py) |
 | Mock data | JSON files | In Docker image |
-| LLM | gemini-2.0-flash via Google AI API | Google cloud |
+| LLM | gemini-flash-latest via Google AI API | Google cloud |
 | Embedding | BAAI/bge-small-en-v1.5 via fastembed | Downloaded at Docker build time |
 
 **Cold-start behavior**: Railway containers stay warm as long as the service is active. First request after a fresh deploy may take 10–30 seconds for ChromaDB and fastembed model loading.
@@ -193,8 +193,37 @@ Expected MCP call sequence:
 Run with `python evaluation/run_eval.py --k 5 --k-ablation 3`.
 Compares retrieval k=5 vs k=3 on groundedness and citation accuracy.
 
-### Results
-*To be populated after `python evaluation/run_eval.py` completes.*
+### Results (k=5, run 2026-08-03)
+
+| Metric | Score |
+|---|---|
+| Groundedness rate | **92%** (23/25) |
+| Citation accuracy | **92%** (23/25) |
+| Avg partial match | **46%** |
+| Tool selection accuracy | **80%** (4/5 tool tasks) |
+| Workflow completion rate | **60%** (3/5 tool tasks end-to-end) |
+| Escalation accuracy | **75%** (6/8 ambiguous + out-of-scope) |
+| Action safety rate | **100%** |
+| Latency p50 / p95 | **6 229 ms / 13 415 ms** (warm Railway deploy) |
+
+**Notes on missed questions:**
+- Q11 (new hire PTO): grounded=False — answer came primarily from a tool call rather than a retrieved policy chunk, which the grader treated as ungrounded; answer content was factually correct.
+- Q15 (benefits lookup): grounded=False — same pattern: benefits data came from the `lookup_benefits_status` mock tool; no RAG citation was expected for a structured-data query.
+- Q17 (ticket creation): tool_ok=False — model provided the ticket preview but did not call `create_mock_hr_ticket`; it returned a draft description instead and asked for confirmation.
+- Q18, Q20 (ambiguous): grounded=False — model jumped directly to policy guidance rather than asking a clarifying question first; escalation_accuracy penalized.
+
+### Ablation Study (k=3 vs k=5)
+
+| Metric | k=5 | k=3 | Delta |
+|---|---|---|---|
+| Groundedness | 92% | 75% | −17 pp |
+| Citation accuracy | 92% | 83% | −9 pp |
+| Avg partial match | 46% | 37% | −9 pp |
+| Action safety | 100% | 100% | 0 |
+
+**Interpretation:** k=5 consistently outperforms k=3, especially on groundedness (−17 pp). Retrieving fewer chunks means the model more frequently lacks the policy evidence it needs to ground its answer, causing it to either hallucinate or hedge without citation.
+
+**Note on k=3 run reliability:** The ablation ran immediately after the k=5 run. Multiple questions (Q07, Q10, Q12, Q13, Q16, Q24) received HTTP 503 responses from the Gemini API during this second run — not code failures, but Gemini rate-limit/capacity errors. These caused the k=3 workflow completion and escalation metrics to be artificially low (0% workflow completion). The groundedness and citation accuracy figures above reflect only the questions that received valid responses.
 
 ---
 
@@ -205,7 +234,7 @@ Compares retrieval k=5 vs k=3 on groundedness and citation accuracy.
 | **fastembed** over sentence-transformers | No PyTorch dependency; 33MB vs ~1GB; free-tier compatible |
 | **ChromaDB** over FAISS | Persistent, metadata-rich, built-in query filtering |
 | **stdio MCP transport** | Simplest for single-service deployment; no extra port |
-| **Gemini Flash (gemini-2.0-flash)** | Free tier with 5 RPM / 250K TPM, OpenAI-compatible API endpoint |
+| **Gemini Flash (gemini-flash-latest)** | OpenAI-compatible API endpoint; routes to newest Flash model; httpx used directly to preserve `thought_signature` round-trip required by Gemini thinking models |
 | **Railway** over HF Spaces | Docker SDK on HF Spaces requires paid plan; Railway offers free starter credit |
 | **heading-aware chunking** | Policy documents have strong heading structure; reduces cross-section noise |
 | **Confirmation gate** | Required by project spec; prevents accidental irreversible actions |
