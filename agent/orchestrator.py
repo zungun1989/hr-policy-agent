@@ -17,7 +17,7 @@ from agent.prompts import SYSTEM_PROMPT
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 MODEL = "llama-3.3-70b-versatile"
-MAX_TOKENS = 2048
+MAX_TOKENS = 1024
 
 MCP_SERVER_SCRIPT = os.path.join(
     os.path.dirname(__file__), "..", "mcp_server", "server.py"
