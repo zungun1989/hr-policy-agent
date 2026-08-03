@@ -2,7 +2,7 @@
 
 An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Google Gemini Flash (gemini-flash-latest)** as the reasoning backbone.
 
-**Quantic MSAIE Capstone Project** — Zeliha Ungun & Fahrettin Ungun
+**Quantic MSAIE Project** — Zeliha Ungun & Fahrettin Ungun
 
 **Live Demo**: https://hr-policy-agent-production.up.railway.app
 
