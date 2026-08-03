@@ -1,15 +1,17 @@
 """
-Agent orchestrator: connects to the MCP server (stdio), calls Groq LLM with MCP tools,
+Agent orchestrator: connects to the MCP server (stdio), calls Gemini LLM with MCP tools,
 handles multi-step HR workflows, and returns cited, traced responses.
 
 The MCP subprocess is started ONCE at app startup via startup_mcp() and kept alive
 for the lifetime of the container, avoiding per-request subprocess overhead.
 """
+import asyncio
 import json
 import os
 import sys
 
-from openai import OpenAI
+from google import genai
+from google.genai import types
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
@@ -25,19 +27,17 @@ MCP_SERVER_SCRIPT = os.path.join(
 
 # Persistent MCP connection — initialized at startup, reused for every request
 _session: ClientSession | None = None
-_groq_tools: list[dict] = []
+_mcp_tools: list = []
 _stdio_cm = None
 
 
-def _tool_to_groq(tool) -> dict:
-    return {
-        "type": "function",
-        "function": {
-            "name": tool.name,
-            "description": tool.description,
-            "parameters": tool.inputSchema,
-        },
-    }
+def _tool_to_fn_decl(tool) -> types.FunctionDeclaration:
+    schema = {k: v for k, v in tool.inputSchema.items() if k != "additionalProperties"}
+    return types.FunctionDeclaration(
+        name=tool.name,
+        description=tool.description,
+        parameters=schema,
+    )
 
 
 def _build_citations(tool_results: list[dict]) -> list[dict]:
@@ -61,7 +61,7 @@ def _build_citations(tool_results: list[dict]) -> list[dict]:
 
 async def startup_mcp() -> None:
     """Start the MCP subprocess once at app startup. Called by FastAPI lifespan."""
-    global _session, _groq_tools, _stdio_cm
+    global _session, _mcp_tools, _stdio_cm
 
     server_params = StdioServerParameters(
         command=sys.executable,
@@ -79,16 +79,16 @@ async def startup_mcp() -> None:
 
         tools_response = await session.list_tools()
         _session = session
-        _groq_tools = [_tool_to_groq(t) for t in tools_response.tools]
+        _mcp_tools = tools_response.tools
         print(
-            f"[MCP] Started — {len(_groq_tools)} tools available",
+            f"[MCP] Started — {len(_mcp_tools)} tools available",
             file=sys.stderr, flush=True,
         )
     except Exception as e:
         err = e.exceptions[0] if hasattr(e, "exceptions") else e
         print(f"[MCP] Startup failed: {type(err).__name__}: {err}", file=sys.stderr, flush=True)
         _session = None
-        _groq_tools = []
+        _mcp_tools = []
 
 
 async def shutdown_mcp() -> None:
@@ -109,7 +109,7 @@ async def shutdown_mcp() -> None:
 
 
 async def _run_agent(user_message: str) -> dict:
-    global _session, _groq_tools
+    global _session, _mcp_tools
 
     if _session is None:
         return {
@@ -122,84 +122,75 @@ async def _run_agent(user_message: str) -> dict:
             "error": "MCP session not initialized",
         }
 
-    client = OpenAI(
-        api_key=GEMINI_API_KEY,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    )
+    client = genai.Client(api_key=GEMINI_API_KEY)
     tool_trace: list[dict] = []
     error_message: str | None = None
     final_text = ""
 
     try:
-        messages: list[dict] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
+        fn_decls = [_tool_to_fn_decl(t) for t in _mcp_tools]
+        config = types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            tools=[types.Tool(function_declarations=fn_decls)],
+            max_output_tokens=MAX_TOKENS,
+        )
+
+        contents: list = [
+            types.Content(role="user", parts=[types.Part(text=user_message)])
         ]
 
         for _iteration in range(8):
             for _retry in range(6):
                 try:
-                    response = client.chat.completions.create(
-                        model=MODEL,
-                        max_tokens=MAX_TOKENS,
-                        tools=_groq_tools,
-                        messages=messages,
+                    _snap = list(contents)
+                    response = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: client.models.generate_content(
+                            model=MODEL,
+                            contents=_snap,
+                            config=config,
+                        ),
                     )
                     break
                 except Exception as _re:
-                    import re as _re_mod, asyncio as _aio
+                    import re as _re_mod
                     _re_err = _re.exceptions[0] if hasattr(_re, "exceptions") else _re
                     _err_str = str(_re_err)
                     if "429" not in _err_str and "RESOURCE_EXHAUSTED" not in _err_str:
-                        raise  # don't retry on 404/400/etc — only on rate limits
+                        raise
                     _match = _re_mod.search(r"retry in (\d+(?:\.\d+)?)s", _err_str)
                     _wait = float(_match.group(1)) if _match else (13 * (2 ** _retry))
                     _wait = min(_wait, 13)
                     if _retry < 5:
                         print(f"[LLM] 429 — waiting {_wait:.0f}s before retry", file=sys.stderr, flush=True)
-                        await _aio.sleep(_wait)
+                        await asyncio.sleep(_wait)
                     else:
                         raise
 
-            msg = response.choices[0].message
-            tool_calls = msg.tool_calls or []
+            model_content = response.candidates[0].content
 
-            if not tool_calls:
-                final_text = msg.content or ""
+            function_call_parts = [
+                p for p in (model_content.parts or [])
+                if p.function_call is not None
+            ]
+
+            if not function_call_parts:
+                text_parts = [p for p in (model_content.parts or []) if p.text]
+                final_text = "".join(p.text for p in text_parts)
                 break
 
-            messages.append({
-                "role": "assistant",
-                "content": msg.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                        "thought_signature": (
-                            tc.extra_content.get("google", {}).get(
-                                "thought_signature", "skip_thought_signature_validator"
-                            )
-                            if hasattr(tc, "extra_content") and tc.extra_content
-                            else "skip_thought_signature_validator"
-                        ),
-                    }
-                    for tc in tool_calls
-                ],
-            })
+            # Append the model's full Content object — the SDK carries thought_signatures
+            # automatically so the next request passes validation without any manual handling.
+            contents.append(model_content)
 
-            for tc in tool_calls:
-                tool_name = tc.function.name
-                try:
-                    tool_input = json.loads(tc.function.arguments)
-                except Exception:
-                    tool_input = {}
+            function_response_parts = []
+            for part in function_call_parts:
+                fc = part.function_call
+                tool_name = fc.name
+                tool_args = dict(fc.args) if fc.args else {}
 
                 try:
-                    mcp_result = await _session.call_tool(tool_name, tool_input)
+                    mcp_result = await _session.call_tool(tool_name, tool_args)
                     raw_result = (
                         json.loads(mcp_result.content[0].text)
                         if mcp_result.content
@@ -212,22 +203,28 @@ async def _run_agent(user_message: str) -> dict:
 
                 tool_trace.append({
                     "tool": tool_name,
-                    "arguments": tool_input,
+                    "arguments": tool_args,
                     "result_summary": _summarize_result(raw_result),
                     "raw_result": raw_result,
                     "is_error": is_error,
                 })
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(raw_result),
-                })
+                function_response_parts.append(
+                    types.Part(
+                        function_response=types.FunctionResponse(
+                            name=tool_name,
+                            response=raw_result,
+                        )
+                    )
+                )
+
+            contents.append(
+                types.Content(role="user", parts=function_response_parts)
+            )
 
         else:
             final_text = (
-                msg.content
-                or "I was unable to complete this request within the allowed steps."
+                "I was unable to complete this request within the allowed steps."
             )
 
     except Exception as e:

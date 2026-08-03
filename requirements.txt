@@ -5,7 +5,7 @@ python-dotenv==1.0.1
 httpx==0.28.1
 
 # LLM
-openai>=1.0.0
+google-genai>=1.0.0
 
 # RAG / Vector store
 chromadb==0.5.23
