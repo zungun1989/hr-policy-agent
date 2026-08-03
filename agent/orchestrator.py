@@ -1,8 +1,10 @@
 """
 Agent orchestrator: connects to the MCP server (stdio), calls Groq LLM with MCP tools,
 handles multi-step HR workflows, and returns cited, traced responses.
+
+The MCP subprocess is started ONCE at app startup via startup_mcp() and kept alive
+for the lifetime of the container, avoiding per-request subprocess overhead.
 """
-import asyncio
 import json
 import os
 import sys
@@ -20,6 +22,11 @@ MAX_TOKENS = 2048
 MCP_SERVER_SCRIPT = os.path.join(
     os.path.dirname(__file__), "..", "mcp_server", "server.py"
 )
+
+# Persistent MCP connection — initialized at startup, reused for every request
+_session: ClientSession | None = None
+_groq_tools: list[dict] = []
+_stdio_cm = None
 
 
 def _tool_to_groq(tool) -> dict:
@@ -52,108 +59,153 @@ def _build_citations(tool_results: list[dict]) -> list[dict]:
     return citations
 
 
+async def startup_mcp() -> None:
+    """Start the MCP subprocess once at app startup. Called by FastAPI lifespan."""
+    global _session, _groq_tools, _stdio_cm
+
+    server_params = StdioServerParameters(
+        command=sys.executable,
+        args=[MCP_SERVER_SCRIPT],
+        env={**os.environ},
+    )
+
+    try:
+        _stdio_cm = stdio_client(server_params)
+        read, write = await _stdio_cm.__aenter__()
+
+        session = ClientSession(read, write)
+        await session.__aenter__()
+        await session.initialize()
+
+        tools_response = await session.list_tools()
+        _session = session
+        _groq_tools = [_tool_to_groq(t) for t in tools_response.tools]
+        print(
+            f"[MCP] Started — {len(_groq_tools)} tools available",
+            file=sys.stderr, flush=True,
+        )
+    except Exception as e:
+        err = e.exceptions[0] if hasattr(e, "exceptions") else e
+        print(f"[MCP] Startup failed: {type(err).__name__}: {err}", file=sys.stderr, flush=True)
+        _session = None
+        _groq_tools = []
+
+
+async def shutdown_mcp() -> None:
+    """Tear down the MCP subprocess. Called by FastAPI lifespan on shutdown."""
+    global _session, _stdio_cm
+    if _session:
+        try:
+            await _session.__aexit__(None, None, None)
+        except Exception:
+            pass
+        _session = None
+    if _stdio_cm:
+        try:
+            await _stdio_cm.__aexit__(None, None, None)
+        except Exception:
+            pass
+        _stdio_cm = None
+
+
 async def _run_agent(user_message: str) -> dict:
+    global _session, _groq_tools
+
+    if _session is None:
+        return {
+            "answer": (
+                "The HR tools are temporarily unavailable. "
+                "Please contact HR directly at hr@acmecorp.com."
+            ),
+            "citations": [],
+            "tool_trace": [],
+            "error": "MCP session not initialized",
+        }
+
     client = Groq(api_key=GROQ_API_KEY)
     tool_trace: list[dict] = []
     error_message: str | None = None
     final_text = ""
 
-    server_params = StdioServerParameters(
-        command=sys.executable,
-        args=[MCP_SERVER_SCRIPT],
-        env={
-            **os.environ,
-            "PYTHONPATH": os.path.join(os.path.dirname(__file__), ".."),
-        },
-    )
-
     try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
+        messages: list[dict] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
 
-                tools_response = await session.list_tools()
-                groq_tools = [_tool_to_groq(t) for t in tools_response.tools]
+        for _iteration in range(8):
+            response = client.chat.completions.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                tools=_groq_tools,
+                messages=messages,
+            )
 
-                messages: list[dict] = [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ]
+            msg = response.choices[0].message
+            tool_calls = msg.tool_calls or []
 
-                for _iteration in range(8):
-                    response = client.chat.completions.create(
-                        model=MODEL,
-                        max_tokens=MAX_TOKENS,
-                        tools=groq_tools,
-                        messages=messages,
+            if not tool_calls:
+                final_text = msg.content or ""
+                break
+
+            messages.append({
+                "role": "assistant",
+                "content": msg.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in tool_calls
+                ],
+            })
+
+            for tc in tool_calls:
+                tool_name = tc.function.name
+                try:
+                    tool_input = json.loads(tc.function.arguments)
+                except Exception:
+                    tool_input = {}
+
+                try:
+                    mcp_result = await _session.call_tool(tool_name, tool_input)
+                    raw_result = (
+                        json.loads(mcp_result.content[0].text)
+                        if mcp_result.content
+                        else {}
                     )
+                    is_error = False
+                except Exception as exc:
+                    raw_result = {"error": str(exc)}
+                    is_error = True
 
-                    msg = response.choices[0].message
-                    tool_calls = msg.tool_calls or []
+                tool_trace.append({
+                    "tool": tool_name,
+                    "arguments": tool_input,
+                    "result_summary": _summarize_result(raw_result),
+                    "raw_result": raw_result,
+                    "is_error": is_error,
+                })
 
-                    if not tool_calls:
-                        final_text = msg.content or ""
-                        break
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(raw_result),
+                })
 
-                    # Add assistant turn with tool calls
-                    messages.append({
-                        "role": "assistant",
-                        "content": msg.content,
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in tool_calls
-                        ],
-                    })
-
-                    # Execute each tool call via MCP
-                    for tc in tool_calls:
-                        tool_name = tc.function.name
-                        try:
-                            tool_input = json.loads(tc.function.arguments)
-                        except Exception:
-                            tool_input = {}
-
-                        try:
-                            mcp_result = await session.call_tool(tool_name, tool_input)
-                            raw_result = (
-                                json.loads(mcp_result.content[0].text)
-                                if mcp_result.content
-                                else {}
-                            )
-                            is_error = False
-                        except Exception as exc:
-                            raw_result = {"error": str(exc)}
-                            is_error = True
-
-                        tool_trace.append({
-                            "tool": tool_name,
-                            "arguments": tool_input,
-                            "result_summary": _summarize_result(raw_result),
-                            "raw_result": raw_result,
-                            "is_error": is_error,
-                        })
-
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": json.dumps(raw_result),
-                        })
-
-                else:
-                    final_text = (
-                        msg.content
-                        or "I was unable to complete this request within the allowed steps."
-                    )
+        else:
+            final_text = (
+                msg.content
+                or "I was unable to complete this request within the allowed steps."
+            )
 
     except Exception as e:
-        error_message = str(e)
+        err = e.exceptions[0] if hasattr(e, "exceptions") else e
+        error_message = f"{type(err).__name__}: {err}"
         final_text = (
             "I encountered an error connecting to the HR tools. "
             "Please contact HR directly at hr@acmecorp.com. "

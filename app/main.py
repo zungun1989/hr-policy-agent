@@ -5,6 +5,7 @@ Endpoints: GET /, GET /health, POST /chat, POST /demo/task1, POST /demo/task2
 import os
 import sys
 import time
+from contextlib import asynccontextmanager
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -16,13 +17,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agent.orchestrator import run_agent
+from agent.orchestrator import run_agent, startup_mcp, shutdown_mcp
 from rag.retriever import is_index_loaded, get_collection_count
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await startup_mcp()
+    yield
+    await shutdown_mcp()
+
 
 app = FastAPI(
     title="Acme Corp HR Policy Agent",
     description="Agentic HR assistant with RAG + MCP tool integration",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -66,7 +76,8 @@ async def health():
         index_ok = False
         chunk_count = 0
 
-    mcp_status = "available"
+    from agent.orchestrator import _session
+    mcp_status = "connected" if _session is not None else "not_connected"
 
     return {
         "status": "ok",
