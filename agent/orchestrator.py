@@ -144,7 +144,6 @@ async def _run_agent(user_message: str) -> dict:
                         max_tokens=MAX_TOKENS,
                         tools=_groq_tools,
                         messages=messages,
-                        extra_body={"thinking_config": {"thinking_budget": 0}},
                     )
                     break
                 except Exception as _re:
@@ -180,8 +179,13 @@ async def _run_agent(user_message: str) -> dict:
                             "name": tc.function.name,
                             "arguments": tc.function.arguments,
                         },
-                        # pass back thought_signature required by Gemini thinking models
-                        **(tc.extra_content if hasattr(tc, "extra_content") and tc.extra_content else {}),
+                        "thought_signature": (
+                            tc.extra_content.get("google", {}).get(
+                                "thought_signature", "skip_thought_signature_validator"
+                            )
+                            if hasattr(tc, "extra_content") and tc.extra_content
+                            else "skip_thought_signature_validator"
+                        ),
                     }
                     for tc in tool_calls
                 ],
