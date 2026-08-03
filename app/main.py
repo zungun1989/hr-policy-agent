@@ -84,7 +84,7 @@ async def health():
         "rag_index": "loaded" if index_ok else "not_loaded",
         "rag_chunk_count": chunk_count,
         "mcp": mcp_status,
-        "model": "groq/llama-3.3-70b-versatile",
+        "model": "gemini/gemini-2.0-flash",
     }
 
 

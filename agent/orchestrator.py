@@ -9,14 +9,14 @@ import json
 import os
 import sys
 
-from groq import Groq
+from openai import OpenAI
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
 from agent.prompts import SYSTEM_PROMPT
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-MODEL = "llama-3.3-70b-versatile"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+MODEL = "gemini-2.0-flash"
 MAX_TOKENS = 1024
 
 MCP_SERVER_SCRIPT = os.path.join(
@@ -122,7 +122,10 @@ async def _run_agent(user_message: str) -> dict:
             "error": "MCP session not initialized",
         }
 
-    client = Groq(api_key=GROQ_API_KEY)
+    client = OpenAI(
+        api_key=GEMINI_API_KEY,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
     tool_trace: list[dict] = []
     error_message: str | None = None
     final_text = ""

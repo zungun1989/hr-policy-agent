@@ -10,12 +10,12 @@ Browser  ──HTTP──►  FastAPI App  ────────────�
                   Agent Orchestrator                                                │
                   (agent/orchestrator.py)                                          │
                          │                                                         │
-                    Claude claude-haiku-4-5 (Anthropic API)                          │
+                    Google Gemini 2.0 Flash (OpenAI-compatible API)                │
                          │                                                         │
                     MCP Client (mcp Python SDK)                                    │
                          │ stdio                                                   │
                          ▼                                                         │
-                  MCP Server (mcp/server.py)                                       │
+                  MCP Server (mcp_server/server.py)                                │
                     ├─ RAG Tools ──────────────────► ChromaDB                      │
                     │   search_policy_documents       (rag/chroma_store/)          │
                     │   get_policy_section            fastembed BAAI/bge-small     │
@@ -44,7 +44,7 @@ Browser  ──HTTP──►  FastAPI App  ────────────�
 - **Markdown**: Heading-aware chunking (split on H1/H2 headings), then token-window within sections (400 tokens max, 64-token overlap)
 - **PDF**: Token window with overlap (400 tokens, 64-token overlap)
 - **Seed**: `PYTHONHASHSEED=42` set for deterministic ordering
-- Result: ~120 chunks across all documents
+- Result: ~113 chunks across all documents
 
 ### Embedding Model
 - `fastembed` with `BAAI/bge-small-en-v1.5` (~33MB, CPU-only, no GPU needed)
@@ -57,7 +57,7 @@ Browser  ──HTTP──►  FastAPI App  ────────────�
 - No reranker in v1 (ablation study compares k=3 vs k=5)
 
 ### RAG Guardrails
-1. Out-of-corpus detection: system prompt instructs Claude to use "outside scope" decline language
+1. Out-of-corpus detection: system prompt instructs the model to use "outside scope" decline language
 2. Policy fact vs recommendation: system prompt distinguishes ("According to policy..." vs "I recommend...")
 3. Insufficient evidence: system prompt instructs escalation to HR when policy evidence is thin
 
@@ -66,14 +66,14 @@ Browser  ──HTTP──►  FastAPI App  ────────────�
 ## MCP Server Design
 
 ### Transport Choice: stdio
-- **Why**: Single-service deployment (HF Spaces Docker). No separate port needed.
+- **Why**: Single-service deployment (Railway Docker). No separate port needed.
 - The agent orchestrator starts the MCP server as a subprocess and communicates via stdin/stdout
 - For a multi-service deployment, Streamable HTTP would be more appropriate
 
 ### Tool Discovery
 - Agent calls `session.list_tools()` on each conversation
 - Returns all 8 tool definitions with JSON Schema input schemas
-- Claude receives these as `tools` parameter in the API call
+- The LLM receives these as `tools` parameter in the API call
 
 ### Tool Schemas
 All tools use JSON Schema v7. Key design decisions:
@@ -82,11 +82,11 @@ All tools use JSON Schema v7. Key design decisions:
 - `enum` values on `ticket_type` and `to_role` constrain valid inputs
 
 ### How the Agent Calls Tools
-1. Claude receives tool definitions from MCP server discovery
-2. Claude returns `tool_use` content blocks when it decides to call a tool
-3. Orchestrator extracts each `tool_use` block and calls `session.call_tool(name, arguments)` via MCP SDK
-4. Tool result is returned to Claude as `tool_result` content
-5. Claude synthesizes final response — **no hard-coded function calls**
+1. LLM receives tool definitions from MCP server discovery
+2. LLM returns tool call blocks when it decides to call a tool
+3. Orchestrator extracts each tool call and calls `session.call_tool(name, arguments)` via MCP SDK
+4. Tool result is returned to the LLM as a `tool` role message
+5. LLM synthesizes final response — **no hard-coded function calls**
 
 ---
 
@@ -96,11 +96,11 @@ All tools use JSON Schema v7. Key design decisions:
 ```
 User message
   → Prepend employee context (if employee_id provided)
-  → Claude + 8 MCP tools
+  → LLM + 8 MCP tools
   → Agentic loop (max 8 rounds):
-      IF tool_use blocks in response:
+      IF tool_calls in response:
         execute each via MCP client
-        append tool_result to conversation
+        append tool result to conversation
         continue loop
       ELSE:
         extract final text response → break
@@ -132,8 +132,8 @@ Expected MCP call sequence:
 
 ### Failure Handling
 - MCP server unavailable: catches exception, returns "HR tools temporarily unavailable" message
-- Employee ID not found: tool returns `found: false` with error message → Claude relays to user
-- Insufficient policy evidence: Claude guided by system prompt to escalate to HR
+- Employee ID not found: tool returns `found: false` with error message → LLM relays to user
+- Insufficient policy evidence: LLM guided by system prompt to escalate to HR
 
 ---
 
@@ -153,16 +153,16 @@ Expected MCP call sequence:
 
 | Component | Technology | Location |
 |---|---|---|
-| Web app + API | FastAPI + uvicorn | HF Spaces Docker (port 7860) |
-| Agent orchestrator | Python + Anthropic SDK | Same process |
+| Web app + API | FastAPI + uvicorn | Railway Docker (port 7860) |
+| Agent orchestrator | Python + Groq SDK | Same process |
 | MCP client | mcp Python SDK (stdio) | Same process |
 | MCP server | mcp Python SDK (subprocess) | Same process (spawned) |
 | RAG index | ChromaDB + fastembed | Built into Docker image (RUN python rag/ingest.py) |
 | Mock data | JSON files | In Docker image |
-| LLM | Claude claude-haiku-4-5 via API | Anthropic cloud |
+| LLM | gemini-2.0-flash via Google AI API | Google cloud |
 | Embedding | BAAI/bge-small-en-v1.5 via fastembed | Downloaded at Docker build time |
 
-**Cold-start behavior**: Hugging Face Spaces Docker containers do not spin down on the free tier (unlike Render). No cold-start delay.
+**Cold-start behavior**: Railway containers stay warm as long as the service is active. First request after a fresh deploy may take 10–30 seconds for ChromaDB and fastembed model loading.
 
 ---
 
@@ -187,20 +187,14 @@ Expected MCP call sequence:
 | Workflow completion rate | % of tool tasks completed end-to-end |
 | Escalation accuracy | % of ambiguous/OOS questions handled correctly |
 | Action safety rate | % of responses where irreversible actions were gated |
-| Latency p50/p95 | Measured over all 25 questions (warm HF Spaces) |
+| Latency p50/p95 | Measured over all 25 questions (warm Railway deployment) |
 
 ### Ablation Study
 Run with `python evaluation/run_eval.py --k 5 --k-ablation 3`.
 Compares retrieval k=5 vs k=3 on groundedness and citation accuracy.
 
 ### Results
-*Run `python evaluation/run_eval.py` after deployment to populate this section with actual metrics.*
-
-Expected targets (pre-eval estimates):
-- Groundedness: ≥ 80%
-- Citation accuracy: ≥ 75%
-- Tool selection accuracy: ≥ 85%
-- Action safety: 100%
+*To be populated after `python evaluation/run_eval.py` completes.*
 
 ---
 
@@ -211,7 +205,7 @@ Expected targets (pre-eval estimates):
 | **fastembed** over sentence-transformers | No PyTorch dependency; 33MB vs ~1GB; free-tier compatible |
 | **ChromaDB** over FAISS | Persistent, metadata-rich, built-in query filtering |
 | **stdio MCP transport** | Simplest for single-service deployment; no extra port |
-| **Claude Haiku** | Best cost/quality for iterative agentic loops; <$0.01 per conversation |
-| **HF Spaces Docker** | Truly free, no 30-day limit (unlike Render), ML-optimized |
+| **Gemini 2.0 Flash** | Free tier, no daily token limit, OpenAI-compatible API endpoint |
+| **Railway** over HF Spaces | Docker SDK on HF Spaces requires paid plan; Railway offers free starter credit |
 | **heading-aware chunking** | Policy documents have strong heading structure; reduces cross-section noise |
 | **Confirmation gate** | Required by project spec; prevents accidental irreversible actions |

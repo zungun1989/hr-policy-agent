@@ -16,8 +16,8 @@ Expected response:
   "status": "ok",
   "rag_index": "loaded",
   "rag_chunk_count": 113,
-  "mcp": "available",
-  "model": "groq/llama-3.3-70b-versatile"
+  "mcp": "connected",
+  "model": "gemini/gemini-2.0-flash"
 }
 ```
 
@@ -44,7 +44,7 @@ Set these as **Railway Service Variables**:
 
 | Variable | Description |
 |---|---|
-| `GROQ_API_KEY` | Groq API key for llama-3.3-70b-versatile |
+| `GEMINI_API_KEY` | Google AI API key for gemini-2.0-flash (free at https://ai.google.dev) |
 
 Optional overrides (have defaults):
 | Variable | Default | Description |

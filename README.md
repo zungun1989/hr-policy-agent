@@ -1,6 +1,6 @@
 # Acme Corp HR Policy Agent
 
-An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Groq Llama-3.3-70b** as the reasoning backbone.
+An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Google Gemini 2.0 Flash** as the reasoning backbone.
 
 **Quantic MSAIE Capstone Project** — Zeliha Ungun & Fahrettin Ungun
 
@@ -28,7 +28,7 @@ FastAPI Web App  (/chat, /health, /demo/task1, /demo/task2)
        │
        ▼
 Agent Orchestrator  (agent/orchestrator.py)
-  └─ Groq llama-3.3-70b-versatile via Groq Python SDK
+  └─ Google Gemini 2.0 Flash via OpenAI-compatible API
        │
        ├─ MCP Client (mcp Python SDK, stdio transport)
        │       │
@@ -53,7 +53,7 @@ Agent Orchestrator  (agent/orchestrator.py)
 
 ### Prerequisites
 - Python 3.12+
-- A Groq API key (free at https://console.groq.com)
+- A Google AI API key (free at https://ai.google.dev)
 
 ### Setup
 
@@ -71,7 +71,7 @@ pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-# Edit .env and add: GROQ_API_KEY=gsk_...
+# Edit .env and add: GEMINI_API_KEY=AIza...
 
 # Build RAG index (downloads ~33MB embedding model first run)
 python rag/ingest.py
@@ -90,7 +90,7 @@ curl http://localhost:8000/health
 
 Expected:
 ```json
-{"status": "ok", "rag_index": "loaded", "rag_chunk_count": 113, "mcp": "available", "model": "groq/llama-3.3-70b-versatile"}
+{"status": "ok", "rag_index": "loaded", "rag_chunk_count": 113, "mcp": "connected", "model": "gemini/gemini-2.0-flash"}
 ```
 
 ---

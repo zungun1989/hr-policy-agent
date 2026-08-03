@@ -18,10 +18,10 @@ This project was built by Zeliha Ungun and Fahrettin Ungun as their Quantic MSAI
   - We designed the evaluation rubric; Claude Code helped implement the scoring logic
   - All final decisions on design, tooling, and deployment were made by the team
 
-### Groq API (Runtime LLM)
-- **Model**: `llama-3.3-70b-versatile`
+### Google Gemini API (Runtime LLM)
+- **Model**: `gemini-2.0-flash`
 - **Usage**: Agent reasoning, tool selection, response synthesis at runtime
-- **Why Groq**: Free tier with generous rate limits; OpenAI-compatible API
+- **Why Gemini**: Free tier with no daily token limit (rate-limited per minute); OpenAI-compatible API endpoint
 
 ---
 
