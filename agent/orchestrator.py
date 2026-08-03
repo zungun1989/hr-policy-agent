@@ -16,7 +16,7 @@ from mcp.client.stdio import stdio_client, StdioServerParameters
 from agent.prompts import SYSTEM_PROMPT
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-flash-latest"
 MAX_TOKENS = 1024
 
 MCP_SERVER_SCRIPT = os.path.join(
@@ -149,11 +149,14 @@ async def _run_agent(user_message: str) -> dict:
                 except Exception as _re:
                     import re as _re_mod, asyncio as _aio
                     _re_err = _re.exceptions[0] if hasattr(_re, "exceptions") else _re
-                    _match = _re_mod.search(r"retry in (\d+(?:\.\d+)?)s", str(_re_err))
+                    _err_str = str(_re_err)
+                    if "429" not in _err_str and "RESOURCE_EXHAUSTED" not in _err_str:
+                        raise  # don't retry on 404/400/etc — only on rate limits
+                    _match = _re_mod.search(r"retry in (\d+(?:\.\d+)?)s", _err_str)
                     _wait = float(_match.group(1)) if _match else (13 * (2 ** _retry))
                     _wait = min(_wait, 13)
                     if _retry < 5:
-                        print(f"[LLM] 429 — waiting {_wait:.0f}s before retry {_retry+1}/3", file=sys.stderr, flush=True)
+                        print(f"[LLM] 429 — waiting {_wait:.0f}s before retry", file=sys.stderr, flush=True)
                         await _aio.sleep(_wait)
                     else:
                         raise
@@ -176,6 +179,8 @@ async def _run_agent(user_message: str) -> dict:
                             "name": tc.function.name,
                             "arguments": tc.function.arguments,
                         },
+                        # pass back thought_signature required by Gemini thinking models
+                        **(tc.extra_content if hasattr(tc, "extra_content") and tc.extra_content else {}),
                     }
                     for tc in tool_calls
                 ],
