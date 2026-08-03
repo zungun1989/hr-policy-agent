@@ -1,6 +1,6 @@
 # Acme Corp HR Policy Agent
 
-An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Google Gemini Flash (gemini-2.0-flash)** as the reasoning backbone.
+An agentic AI system that helps employees with HR policy questions and workflows. Built with **RAG** (Retrieval-Augmented Generation) over company policy documents, **MCP** (Model Context Protocol) for tool integration, and **Google Gemini Flash (gemini-flash-latest)** as the reasoning backbone.
 
 **Quantic MSAIE Capstone Project** — Zeliha Ungun & Fahrettin Ungun
 
@@ -28,7 +28,7 @@ FastAPI Web App  (/chat, /health, /demo/task1, /demo/task2)
        │
        ▼
 Agent Orchestrator  (agent/orchestrator.py)
-  └─ Google Gemini Flash (gemini-2.0-flash) via OpenAI-compatible API
+  └─ Google Gemini Flash (gemini-flash-latest) via OpenAI-compatible API
        │
        ├─ MCP Client (mcp Python SDK, stdio transport)
        │       │
@@ -90,7 +90,7 @@ curl http://localhost:8000/health
 
 Expected:
 ```json
-{"status": "ok", "rag_index": "loaded", "rag_chunk_count": 113, "mcp": "connected", "model": "gemini/gemini-2.0-flash"}
+{"status": "ok", "rag_index": "loaded", "rag_chunk_count": 113, "mcp": "connected", "model": "gemini/gemini-flash-latest"}
 ```
 
 ---
