@@ -144,6 +144,7 @@ async def _run_agent(user_message: str) -> dict:
                         max_tokens=MAX_TOKENS,
                         tools=_groq_tools,
                         messages=messages,
+                        extra_body={"thinking_config": {"thinking_budget": 0}},
                     )
                     break
                 except Exception as _re:
