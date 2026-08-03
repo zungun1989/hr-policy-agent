@@ -17,7 +17,7 @@ Expected response:
   "rag_index": "loaded",
   "rag_chunk_count": 113,
   "mcp": "connected",
-  "model": "gemini/gemini-flash-latest"
+  "model": "gemini/gemini-2.0-flash"
 }
 ```
 
@@ -44,7 +44,7 @@ Set these as **Railway Service Variables**:
 
 | Variable | Description |
 |---|---|
-| `GEMINI_API_KEY` | Google AI API key for gemini-flash-latest (free at https://ai.google.dev) |
+| `GEMINI_API_KEY` | Google AI API key for gemini-2.0-flash (free at https://ai.google.dev) |
 
 Optional overrides (have defaults):
 | Variable | Default | Description |

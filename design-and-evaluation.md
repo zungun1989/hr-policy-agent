@@ -10,7 +10,7 @@ Browser  ──HTTP──►  FastAPI App  ────────────�
                   Agent Orchestrator                                                │
                   (agent/orchestrator.py)                                          │
                          │                                                         │
-                    Google Gemini Flash (gemini-flash-latest, OpenAI-compatible API)                │
+                    Google Gemini Flash (gemini-2.0-flash, OpenAI-compatible API)                │
                          │                                                         │
                     MCP Client (mcp Python SDK)                                    │
                          │ stdio                                                   │
@@ -159,7 +159,7 @@ Expected MCP call sequence:
 | MCP server | mcp Python SDK (subprocess) | Same process (spawned) |
 | RAG index | ChromaDB + fastembed | Built into Docker image (RUN python rag/ingest.py) |
 | Mock data | JSON files | In Docker image |
-| LLM | gemini-flash-latest via Google AI API | Google cloud |
+| LLM | gemini-2.0-flash via Google AI API | Google cloud |
 | Embedding | BAAI/bge-small-en-v1.5 via fastembed | Downloaded at Docker build time |
 
 **Cold-start behavior**: Railway containers stay warm as long as the service is active. First request after a fresh deploy may take 10–30 seconds for ChromaDB and fastembed model loading.
@@ -205,7 +205,7 @@ Compares retrieval k=5 vs k=3 on groundedness and citation accuracy.
 | **fastembed** over sentence-transformers | No PyTorch dependency; 33MB vs ~1GB; free-tier compatible |
 | **ChromaDB** over FAISS | Persistent, metadata-rich, built-in query filtering |
 | **stdio MCP transport** | Simplest for single-service deployment; no extra port |
-| **Gemini Flash (gemini-flash-latest)** | Free tier with 5 RPM / 250K TPM, OpenAI-compatible API endpoint |
+| **Gemini Flash (gemini-2.0-flash)** | Free tier with 5 RPM / 250K TPM, OpenAI-compatible API endpoint |
 | **Railway** over HF Spaces | Docker SDK on HF Spaces requires paid plan; Railway offers free starter credit |
 | **heading-aware chunking** | Policy documents have strong heading structure; reduces cross-section noise |
 | **Confirmation gate** | Required by project spec; prevents accidental irreversible actions |

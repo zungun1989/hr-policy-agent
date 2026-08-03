@@ -19,9 +19,9 @@ This project was built by Zeliha Ungun and Fahrettin Ungun as their Quantic MSAI
   - All final decisions on design, tooling, and deployment were made by the team
 
 ### Google Gemini API (Runtime LLM)
-- **Model**: `gemini-flash-latest` (Google Gemini 2.5 Flash)
+- **Model**: `gemini-2.0-flash` (Google Gemini 2.0 Flash)
 - **Usage**: Agent reasoning, tool selection, response synthesis at runtime
-- **Why Gemini**: Free tier with 5 RPM / 250K TPM quota; OpenAI-compatible API endpoint; no daily token cap
+- **Why Gemini**: OpenAI-compatible API endpoint; 15 RPM / 1M TPM / 1500 RPD on paid tier; no thinking-mode overhead
 
 ---
 

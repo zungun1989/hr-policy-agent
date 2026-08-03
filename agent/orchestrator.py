@@ -16,7 +16,7 @@ from mcp.client.stdio import stdio_client, StdioServerParameters
 from agent.prompts import SYSTEM_PROMPT
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL = "gemini-flash-latest"
+MODEL = "gemini-2.0-flash"
 MAX_TOKENS = 1024
 
 MCP_SERVER_SCRIPT = os.path.join(
