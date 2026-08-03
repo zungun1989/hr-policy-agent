@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 import httpx
 
 DEFAULT_BASE_URL = "https://hr-policy-agent-production.up.railway.app"
-REQUEST_TIMEOUT = 120  # seconds
+REQUEST_TIMEOUT = 300  # seconds — retries can take up to 6×13s
 REQUEST_DELAY = 30     # seconds between questions — Gemini free tier 5 RPM, each Q uses 2-3 LLM calls
 
 
